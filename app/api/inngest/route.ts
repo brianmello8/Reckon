@@ -7,6 +7,7 @@ import { cronHourlyIngestion } from "@/lib/jobs/cron-hourly";
 import { composeDailyDigest } from "@/lib/jobs/compose-daily-digest";
 import { cronDailyDigest } from "@/lib/jobs/cron-daily-digest";
 import { detectAnomaliesJob } from "@/lib/jobs/detect-anomalies";
+import { notifyAnomaly } from "@/lib/jobs/notify-anomaly";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -18,5 +19,6 @@ export const { GET, POST, PUT } = serve({
     composeDailyDigest,
     cronDailyDigest,
     detectAnomaliesJob,
+    notifyAnomaly,
   ],
 });

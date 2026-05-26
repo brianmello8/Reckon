@@ -1,0 +1,1 @@
+ALTER TABLE "anomalies" ADD COLUMN "slack_message_ts" text;

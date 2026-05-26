@@ -211,6 +211,7 @@ export const anomalies = pgTable(
     acknowledgedByUserId: uuid("acknowledged_by_user_id").references(
       () => users.id
     ),
+    slackMessageTs: text("slack_message_ts"),
   },
   (t) => [
     index("idx_anomalies_org_unack")
