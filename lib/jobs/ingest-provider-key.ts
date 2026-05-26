@@ -5,7 +5,10 @@ import { eq } from "drizzle-orm";
 import { decryptSecret } from "@/lib/encryption/envelope";
 import { getProviderClient } from "@/lib/providers/registry";
 import { ProviderAuthError, ProviderTransientError } from "@/lib/providers/errors";
-import { subHours, parseISO } from "date-fns";
+import { subHours, subDays, addDays, parseISO, differenceInDays, min } from "date-fns";
+import type { UsageRow } from "@/lib/providers/types";
+
+const CHUNK_DAYS = 7;
 
 export const ingestProviderKey = inngest.createFunction(
   {
@@ -20,9 +23,7 @@ export const ingestProviderKey = inngest.createFunction(
     };
 
     // Step 1: Load the provider key row.
-    // Uses a privileged query (no RLS) because this is a system job
-    // that runs across orgs. The org_id is taken from the row itself,
-    // never from user input.
+    // Uses a privileged query (no RLS) because this is a system job.
     const keyRow = await step.run("load-key", async () => {
       const [row] = await db
         .select({
@@ -45,7 +46,6 @@ export const ingestProviderKey = inngest.createFunction(
 
       return {
         ...row,
-        // Serialize buffers for step serialization
         encryptedKey: row.encryptedKey.toString("base64"),
         encryptedDek: row.encryptedDek.toString("base64"),
         iv: row.iv.toString("base64"),
@@ -65,92 +65,65 @@ export const ingestProviderKey = inngest.createFunction(
       return p.key;
     });
 
-    // Step 3: Decrypt and fetch usage
-    const rows = await step.run("fetch-usage", async () => {
-      const plaintext = await decryptSecret({
+    // Step 3: Decrypt the key (once, reuse across chunks)
+    const plaintext = await step.run("decrypt-key", async () => {
+      return decryptSecret({
         ciphertext: Buffer.from(keyRow.encryptedKey, "base64"),
         encryptedDek: Buffer.from(keyRow.encryptedDek, "base64"),
         iv: Buffer.from(keyRow.iv, "base64"),
         authTag: Buffer.from(keyRow.authTag, "base64"),
       });
+    });
 
-      const client = getProviderClient(providerSlug);
-      const sinceDate = since ? parseISO(since) : subHours(new Date(), 48);
-      const untilDate = new Date();
+    // Step 4: Fetch usage in chunks
+    const sinceDate = since ? parseISO(since) : subHours(new Date(), 48);
+    const untilDate = new Date();
+    const totalDays = differenceInDays(untilDate, sinceDate);
+    const numChunks = Math.max(1, Math.ceil(totalDays / CHUNK_DAYS));
 
-      try {
-        return await client.fetchUsage({
-          apiKey: plaintext,
-          since: sinceDate,
-          until: untilDate,
-        });
-      } catch (err) {
-        if (err instanceof ProviderAuthError) {
-          // Mark key as errored — don't retry
-          await db
-            .update(providerKeys)
-            .set({
-              status: "errored",
-              lastError: err.message,
-              updatedAt: new Date(),
-            })
-            .where(eq(providerKeys.id, provider_key_id));
+    let totalUpserted = 0;
 
-          // Return empty — non-retryable
-          return "AUTH_ERROR" as const;
-        }
-        if (err instanceof ProviderTransientError) {
-          // Throw to let Inngest retry
+    for (let i = 0; i < numChunks; i++) {
+      const chunkStart = addDays(sinceDate, i * CHUNK_DAYS);
+      const chunkEnd = min([addDays(chunkStart, CHUNK_DAYS), untilDate]);
+
+      const rows = await step.run(`fetch-chunk-${i}`, async () => {
+        const client = getProviderClient(providerSlug);
+        try {
+          return await client.fetchUsage({
+            apiKey: plaintext,
+            since: chunkStart,
+            until: chunkEnd,
+          });
+        } catch (err) {
+          if (err instanceof ProviderAuthError) {
+            await db
+              .update(providerKeys)
+              .set({
+                status: "errored",
+                lastError: err.message,
+                updatedAt: new Date(),
+              })
+              .where(eq(providerKeys.id, provider_key_id));
+            return "AUTH_ERROR" as const;
+          }
+          if (err instanceof ProviderTransientError) {
+            throw err;
+          }
           throw err;
         }
-        throw err;
-      }
-    });
+      });
 
-    if (rows === "AUTH_ERROR") {
-      return { status: "errored", reason: "auth_error" };
+      if (rows === "AUTH_ERROR") {
+        return { status: "errored", reason: "auth_error" };
+      }
+
+      const upserted = await step.run(`upsert-chunk-${i}`, async () => {
+        return upsertRows(rows, keyRow);
+      });
+
+      totalUpserted += upserted;
     }
-
-    // Step 4: Upsert usage events
-    const upsertCount = await step.run("upsert-usage", async () => {
-      if (rows.length === 0) return 0;
-
-      let count = 0;
-      for (const row of rows) {
-        await db
-          .insert(usageEvents)
-          .values({
-            orgId: keyRow.orgId,
-            providerKeyId: keyRow.id,
-            providerId: keyRow.providerId,
-            developerId: keyRow.developerId,
-            timeBucket: row.time_bucket,
-            model: row.model,
-            inputTokens: BigInt(row.input_tokens),
-            outputTokens: BigInt(row.output_tokens),
-            cachedInputTokens: BigInt(row.cached_input_tokens),
-            costUsdMicros: BigInt(row.cost_usd_micros),
-            raw: row.raw,
-          })
-          .onConflictDoUpdate({
-            target: [
-              usageEvents.providerKeyId,
-              usageEvents.timeBucket,
-              usageEvents.model,
-            ],
-            set: {
-              inputTokens: BigInt(row.input_tokens),
-              outputTokens: BigInt(row.output_tokens),
-              cachedInputTokens: BigInt(row.cached_input_tokens),
-              costUsdMicros: BigInt(row.cost_usd_micros),
-              raw: row.raw,
-              updatedAt: new Date(),
-            },
-          });
-        count++;
-      }
-      return count;
-    });
 
     // Step 5: Update last_polled_at
     await step.run("update-polled", async () => {
@@ -164,6 +137,49 @@ export const ingestProviderKey = inngest.createFunction(
         .where(eq(providerKeys.id, provider_key_id));
     });
 
-    return { status: "ok", upserted: upsertCount };
+    return { status: "ok", upserted: totalUpserted, chunks: numChunks };
   }
 );
+
+async function upsertRows(
+  rows: UsageRow[],
+  keyRow: { id: string; orgId: string; providerId: string; developerId: string }
+): Promise<number> {
+  if (rows.length === 0) return 0;
+
+  let count = 0;
+  for (const row of rows) {
+    await db
+      .insert(usageEvents)
+      .values({
+        orgId: keyRow.orgId,
+        providerKeyId: keyRow.id,
+        providerId: keyRow.providerId,
+        developerId: keyRow.developerId,
+        timeBucket: row.time_bucket,
+        model: row.model,
+        inputTokens: BigInt(row.input_tokens),
+        outputTokens: BigInt(row.output_tokens),
+        cachedInputTokens: BigInt(row.cached_input_tokens),
+        costUsdMicros: BigInt(row.cost_usd_micros),
+        raw: row.raw,
+      })
+      .onConflictDoUpdate({
+        target: [
+          usageEvents.providerKeyId,
+          usageEvents.timeBucket,
+          usageEvents.model,
+        ],
+        set: {
+          inputTokens: BigInt(row.input_tokens),
+          outputTokens: BigInt(row.output_tokens),
+          cachedInputTokens: BigInt(row.cached_input_tokens),
+          costUsdMicros: BigInt(row.cost_usd_micros),
+          raw: row.raw,
+          updatedAt: new Date(),
+        },
+      });
+    count++;
+  }
+  return count;
+}

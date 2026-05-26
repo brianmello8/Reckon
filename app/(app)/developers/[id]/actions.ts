@@ -107,8 +107,8 @@ export async function addProviderKey(formData: FormData) {
   const fingerprint = keyFingerprint(parsed.apiKey);
 
   // Store in DB
-  await withOrgContext(user.orgId, async (tx) => {
-    await tx.insert(providerKeys).values({
+  const [newKey] = await withOrgContext(user.orgId, async (tx) => {
+    return tx.insert(providerKeys).values({
       orgId: user.orgId,
       developerId: parsed.developerId,
       providerId: provider.id,
@@ -117,7 +117,15 @@ export async function addProviderKey(formData: FormData) {
       iv: encrypted.iv,
       authTag: encrypted.authTag,
       keyFingerprint: fingerprint,
-    });
+    }).returning({ id: providerKeys.id });
+  });
+
+  // Trigger immediate backfill of last 30 days
+  const { inngest } = await import("@/lib/jobs/client");
+  const since = subDays(new Date(), 30).toISOString();
+  await inngest.send({
+    name: "ingestion/provider-key.requested",
+    data: { provider_key_id: newKey.id, since },
   });
 
   revalidatePath(`/developers/${parsed.developerId}`);

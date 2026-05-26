@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Key, ArrowLeft, RefreshCw } from "lucide-react";
 import { addProviderKey, revokeProviderKey, repollKey } from "./actions";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, differenceInMinutes } from "date-fns";
 import Link from "next/link";
 
 type ProviderKey = {
@@ -110,6 +110,14 @@ export function DeveloperDetail({
     errored: "destructive" as const,
     revoked: "secondary" as const,
   };
+
+  function isBackfilling(key: ProviderKey) {
+    return (
+      key.status === "active" &&
+      !key.lastPolledAt &&
+      differenceInMinutes(new Date(), key.createdAt) < 30
+    );
+  }
 
   return (
     <div>
@@ -214,9 +222,15 @@ export function DeveloperDetail({
                         ...{key.keyFingerprint}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusColor[key.status]}>
-                          {key.status}
-                        </Badge>
+                        {isBackfilling(key) ? (
+                          <Badge variant="outline" className="animate-pulse">
+                            Backfilling...
+                          </Badge>
+                        ) : (
+                          <Badge variant={statusColor[key.status]}>
+                            {key.status}
+                          </Badge>
+                        )}
                         {key.lastError && key.status === "errored" && (
                           <p className="mt-1 text-xs text-red-600 max-w-xs truncate">
                             {key.lastError}
