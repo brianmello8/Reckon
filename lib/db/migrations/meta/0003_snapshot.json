@@ -1,6 +1,6 @@
 {
-  "id": "b5a23ddf-9f02-5815-a4e8-183350fedc85",
-  "prevId": "4a012ccf-8ef1-4704-93d7-072249fecb74",
+  "id": "321b8095-ab3e-48fb-b0d6-18ff6214a830",
+  "prevId": "b5a23ddf-9f02-5815-a4e8-183350fedc85",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -416,6 +416,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "clerk_org_id": {
+          "name": "clerk_org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -493,6 +499,13 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
+        "organizations_clerk_org_id_unique": {
+          "name": "organizations_clerk_org_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "clerk_org_id"
+          ]
+        },
         "organizations_slug_unique": {
           "name": "organizations_slug_unique",
           "nullsNotDistinct": false,

@@ -46,6 +46,7 @@ export const digestKindEnum = pgEnum("digest_kind", ["daily", "weekly"]);
 
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().defaultRandom(),
+  clerkOrgId: text("clerk_org_id").unique(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   stripeCustomerId: text("stripe_customer_id"),
