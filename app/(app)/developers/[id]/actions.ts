@@ -142,3 +142,31 @@ export async function revokeProviderKey(keyId: string) {
   revalidatePath("/developers");
   return { success: true };
 }
+
+export async function repollKey(keyId: string) {
+  const user = await requireUser();
+
+  // Verify the key belongs to this org
+  const [key] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ id: providerKeys.id })
+      .from(providerKeys)
+      .where(
+        and(
+          eq(providerKeys.id, keyId),
+          eq(providerKeys.orgId, user.orgId)
+        )
+      )
+      .limit(1);
+  });
+
+  if (!key) throw new Error("Key not found");
+
+  const { inngest } = await import("@/lib/jobs/client");
+  await inngest.send({
+    name: "ingestion/provider-key.requested",
+    data: { provider_key_id: keyId },
+  });
+
+  return { success: true };
+}

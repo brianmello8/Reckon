@@ -22,8 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Key, ArrowLeft } from "lucide-react";
-import { addProviderKey, revokeProviderKey } from "./actions";
+import { Plus, Key, ArrowLeft, RefreshCw } from "lucide-react";
+import { addProviderKey, revokeProviderKey, repollKey } from "./actions";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
@@ -63,6 +63,7 @@ export function DeveloperDetail({
   const [addOpen, setAddOpen] = useState(false);
   const [addPending, startAddTransition] = useTransition();
   const [revokePending, startRevokeTransition] = useTransition();
+  const [repollPending, startRepollTransition] = useTransition();
 
   function handleAddKey(formData: FormData) {
     startAddTransition(async () => {
@@ -73,6 +74,19 @@ export function DeveloperDetail({
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to add key"
+        );
+      }
+    });
+  }
+
+  function handleRepoll(keyId: string) {
+    startRepollTransition(async () => {
+      try {
+        await repollKey(keyId);
+        toast.success("Re-poll triggered");
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to trigger re-poll"
         );
       }
     });
@@ -218,15 +232,26 @@ export function DeveloperDetail({
                       </TableCell>
                       <TableCell>
                         {key.status === "active" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={revokePending}
-                            onClick={() => handleRevoke(key.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            Revoke
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={repollPending}
+                              onClick={() => handleRepoll(key.id)}
+                            >
+                              <RefreshCw className="mr-1 h-3 w-3" />
+                              Re-poll
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={revokePending}
+                              onClick={() => handleRevoke(key.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              Revoke
+                            </Button>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
