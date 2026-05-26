@@ -57,6 +57,7 @@ export const organizations = pgTable("organizations", {
     .notNull()
     .default("America/Los_Angeles"),
   digestSlackChannelId: text("digest_slack_channel_id"),
+  linearTeamId: text("linear_team_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -212,6 +213,7 @@ export const anomalies = pgTable(
       () => users.id
     ),
     slackMessageTs: text("slack_message_ts"),
+    linearIssueId: text("linear_issue_id"),
   },
   (t) => [
     index("idx_anomalies_org_unack")

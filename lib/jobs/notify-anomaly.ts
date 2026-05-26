@@ -126,6 +126,55 @@ export const notifyAnomaly = inngest.createFunction(
       });
     }
 
+    // Step: Create Linear issue for critical anomalies
+    if (data.anomaly.severity === "critical") {
+      await step.run("create-linear-issue", async () => {
+        try {
+          const [org] = await db
+            .select({ linearTeamId: organizations.linearTeamId })
+            .from(organizations)
+            .where(eq(organizations.id, data.anomaly.orgId))
+            .limit(1);
+
+          if (!org?.linearTeamId) return { created: false, reason: "no_team" };
+
+          const { getLinearClient } = await import("@/lib/linear/client");
+          const linearClient = await getLinearClient(data.anomaly.orgId);
+          if (!linearClient) return { created: false, reason: "no_linear" };
+
+          const details = data.anomaly.details as Record<string, unknown> | null;
+          const amountDollars = (Number(details?.dailyCostMicros ?? 0) / 1_000_000).toFixed(2);
+
+          const issue = await linearClient.createIssue({
+            teamId: org.linearTeamId,
+            title: `AI spend anomaly: ${data.developerName} — $${amountDollars}`,
+            description: [
+              `**${data.developerName}** spent $${amountDollars} yesterday — ${details?.multiple ?? "?"}x their trailing average.`,
+              "",
+              `Severity: ${data.anomaly.severity}`,
+              `Kind: ${data.anomaly.kind}`,
+              "",
+              `[View in Reckon](${process.env.NEXT_PUBLIC_APP_URL}/anomalies)`,
+            ].join("\n"),
+            priority: 1, // Urgent
+          });
+
+          const created = await issue.issue;
+          if (created) {
+            await db
+              .update(anomalies)
+              .set({ linearIssueId: created.id })
+              .where(eq(anomalies.id, anomaly_id));
+          }
+
+          return { created: true, issueId: created?.id };
+        } catch {
+          // Linear failures don't block Slack notification
+          return { created: false, reason: "error" };
+        }
+      });
+    }
+
     return { status: "ok", ...result };
   }
 );

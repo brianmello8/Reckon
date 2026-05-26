@@ -12,6 +12,9 @@ import {
   sendTestMessage,
   getSlackChannels,
   setDigestChannel,
+  disconnectLinear,
+  getLinearTeams,
+  setLinearTeam,
 } from "./actions";
 
 type SlackInstall = {
@@ -20,12 +23,21 @@ type SlackInstall = {
   installedAt: Date;
 } | null;
 
-export function IntegrationsClient({ slack }: { slack: SlackInstall }) {
+type LinearInstall = {
+  orgId: string;
+  workspaceId: string;
+  installedAt: Date;
+} | null;
+
+export function IntegrationsClient({ slack, linear }: { slack: SlackInstall; linear: LinearInstall }) {
   const searchParams = useSearchParams();
   const [disconnectPending, startDisconnect] = useTransition();
   const [testPending, startTest] = useTransition();
   const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
   const [channelPending, startChannel] = useTransition();
+  const [linearDisconnectPending, startLinearDisconnect] = useTransition();
+  const [linearTeams, setLinearTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [linearTeamPending, startLinearTeam] = useTransition();
 
   useEffect(() => {
     if (searchParams.get("success") === "slack") {
@@ -41,6 +53,12 @@ export function IntegrationsClient({ slack }: { slack: SlackInstall }) {
       getSlackChannels().then(setChannels).catch(() => {});
     }
   }, [slack]);
+
+  useEffect(() => {
+    if (linear) {
+      getLinearTeams().then(setLinearTeams).catch(() => {});
+    }
+  }, [linear]);
 
   function handleDisconnect() {
     startDisconnect(async () => {
@@ -156,19 +174,90 @@ export function IntegrationsClient({ slack }: { slack: SlackInstall }) {
         </CardContent>
       </Card>
 
-      {/* Linear (placeholder) */}
+      {/* Linear */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-3">
             <GitPullRequest className="h-5 w-5 text-zinc-700" />
             <CardTitle>Linear</CardTitle>
           </div>
-          <Badge variant="secondary">Not connected</Badge>
+          {linear ? (
+            <Badge>Connected</Badge>
+          ) : (
+            <Badge variant="secondary">Not connected</Badge>
+          )}
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-zinc-600">
-            Connect Linear to auto-create issues for critical anomalies. Coming soon.
-          </p>
+        <CardContent className="space-y-4">
+          {linear ? (
+            <>
+              <p className="text-sm text-zinc-600">
+                Connected to workspace <span className="font-mono">{linear.workspaceId}</span>
+              </p>
+
+              {linearTeams.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700">
+                    Team for anomaly issues
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      startLinearTeam(async () => {
+                        try {
+                          await setLinearTeam(e.target.value);
+                          toast.success("Linear team updated");
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Failed");
+                        }
+                      });
+                    }}
+                    disabled={linearTeamPending}
+                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      Select a team...
+                    </option>
+                    {linearTeams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  startLinearDisconnect(async () => {
+                    try {
+                      await disconnectLinear();
+                      toast.success("Linear disconnected");
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : "Failed");
+                    }
+                  });
+                }}
+                disabled={linearDisconnectPending}
+                className="text-red-600 hover:text-red-700"
+              >
+                Disconnect
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-zinc-600">
+                Connect Linear to auto-create issues for critical anomalies.
+              </p>
+              <a
+                href="/api/integrations/linear/install"
+                className="inline-flex h-8 items-center justify-center rounded-md bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                Connect Linear
+              </a>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

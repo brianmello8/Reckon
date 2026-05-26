@@ -12,7 +12,7 @@ export default async function IntegrationsPage() {
       </p>
 
       <div className="mt-6">
-        <IntegrationsClient slack={data.slack} />
+        <IntegrationsClient slack={data.slack} linear={data.linear} />
       </div>
     </div>
   );

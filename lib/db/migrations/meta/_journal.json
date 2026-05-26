@@ -36,6 +36,13 @@
       "when": 1779835491746,
       "tag": "0004_same_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779835988469,
+      "tag": "0005_cloudy_maggott",
+      "breakpoints": true
     }
   ]
 }

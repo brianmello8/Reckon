@@ -40,6 +40,22 @@ export async function getAnomalies(filter: "all" | "unacknowledged" | "acknowled
 export async function acknowledgeAnomaly(anomalyId: string) {
   const user = await requireUser();
 
+  // Get the anomaly to check for Linear issue
+  const [anomaly] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({
+        id: anomalies.id,
+        linearIssueId: anomalies.linearIssueId,
+      })
+      .from(anomalies)
+      .where(
+        and(eq(anomalies.id, anomalyId), eq(anomalies.orgId, user.orgId))
+      )
+      .limit(1);
+  });
+
+  if (!anomaly) throw new Error("Anomaly not found");
+
   await withOrgContext(user.orgId, async (tx) => {
     await tx
       .update(anomalies)
@@ -54,6 +70,36 @@ export async function acknowledgeAnomaly(anomalyId: string) {
         )
       );
   });
+
+  // Close the Linear issue if one exists
+  if (anomaly.linearIssueId) {
+    try {
+      const { getLinearClient } = await import("@/lib/linear/client");
+      const linearClient = await getLinearClient(user.orgId);
+      if (linearClient) {
+        // Find the "Done" or "Canceled" state for the issue's team
+        const issue = await linearClient.issue(anomaly.linearIssueId);
+        const team = await issue.team;
+        if (team) {
+          const states = await team.states();
+          const doneState = states.nodes.find(
+            (s) => s.type === "completed" || s.name.toLowerCase() === "done"
+          );
+          if (doneState) {
+            await linearClient.updateIssue(anomaly.linearIssueId, {
+              stateId: doneState.id,
+            });
+            await linearClient.createComment({
+              issueId: anomaly.linearIssueId,
+              body: `Acknowledged in Reckon by ${user.name}`,
+            });
+          }
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
 
   revalidatePath("/anomalies");
   return { success: true };

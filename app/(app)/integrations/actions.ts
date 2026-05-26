@@ -2,16 +2,20 @@
 
 import { requireUser, requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db/client";
-import { slackInstallations, organizations } from "@/lib/db/schema";
+import { slackInstallations, linearInstallations, organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getSlackClient, getSlackInstallation } from "@/lib/slack/client";
+import { getLinearClient, getLinearInstallation } from "@/lib/linear/client";
 import { revalidatePath } from "next/cache";
 import { withOrgContext } from "@/lib/db/rls";
 
 export async function getIntegrationsData() {
   const user = await requireUser();
-  const slack = await getSlackInstallation(user.orgId);
-  return { slack };
+  const [slack, linear] = await Promise.all([
+    getSlackInstallation(user.orgId),
+    getLinearInstallation(user.orgId),
+  ]);
+  return { slack, linear };
 }
 
 export async function disconnectSlack() {
@@ -88,6 +92,50 @@ export async function setDigestChannel(channelId: string) {
     await tx
       .update(organizations)
       .set({ digestSlackChannelId: channelId, updatedAt: new Date() })
+      .where(eq(organizations.id, user.orgId));
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/integrations");
+  return { success: true };
+}
+
+export async function disconnectLinear() {
+  const user = await requireAdmin();
+
+  await db
+    .update(linearInstallations)
+    .set({ uninstalledAt: new Date() })
+    .where(eq(linearInstallations.orgId, user.orgId));
+
+  await withOrgContext(user.orgId, async (tx) => {
+    await tx
+      .update(organizations)
+      .set({ linearTeamId: null, updatedAt: new Date() })
+      .where(eq(organizations.id, user.orgId));
+  });
+
+  revalidatePath("/integrations");
+  return { success: true };
+}
+
+export async function getLinearTeams() {
+  const user = await requireUser();
+
+  const client = await getLinearClient(user.orgId);
+  if (!client) return [];
+
+  const teams = await client.teams();
+  return teams.nodes.map((t) => ({ id: t.id, name: t.name }));
+}
+
+export async function setLinearTeam(teamId: string) {
+  const user = await requireAdmin();
+
+  await withOrgContext(user.orgId, async (tx) => {
+    await tx
+      .update(organizations)
+      .set({ linearTeamId: teamId, updatedAt: new Date() })
       .where(eq(organizations.id, user.orgId));
   });
 
