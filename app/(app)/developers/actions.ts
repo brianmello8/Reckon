@@ -31,6 +31,13 @@ export async function addDeveloper(formData: FormData) {
       .returning();
   });
 
+  // Sync developer count with Stripe
+  const { inngest } = await import("@/lib/jobs/client");
+  await inngest.send({
+    name: "billing/developer-count.changed",
+    data: { org_id: user.orgId },
+  });
+
   revalidatePath("/developers");
   return { id: dev.id };
 }

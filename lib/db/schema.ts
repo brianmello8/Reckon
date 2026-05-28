@@ -52,6 +52,7 @@ export const organizations = pgTable("organizations", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   plan: planEnum("plan").notNull().default("free"),
+  paymentStatus: text("payment_status"),
   digestTimeLocal: text("digest_time_local").notNull().default("09:00"),
   digestTimezone: text("digest_timezone")
     .notNull()

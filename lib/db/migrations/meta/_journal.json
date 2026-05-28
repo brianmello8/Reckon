@@ -43,6 +43,13 @@
       "when": 1779835988469,
       "tag": "0005_cloudy_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779979794958,
+      "tag": "0006_fair_shatterstar",
+      "breakpoints": true
     }
   ]
 }
