@@ -92,6 +92,33 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    if (actionId === "spend_make_public") {
+      // Re-post the ephemeral content as an in-channel message
+      const responseUrl = payload.response_url;
+      const text = action.value ?? "";
+      if (responseUrl && text) {
+        try {
+          await fetch(responseUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              response_type: "in_channel",
+              replace_original: true,
+              text,
+              blocks: [
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text },
+                },
+              ],
+            }),
+          });
+        } catch {
+          // Non-fatal
+        }
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });
