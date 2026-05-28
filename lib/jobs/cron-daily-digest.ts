@@ -87,7 +87,8 @@ export const cronDailyDigest = inngest.createFunction(
       return { status: "skipped", reason: "no_orgs_due" };
     }
 
-    await step.run("fire-digest-events", async () => {
+    // Fire daily digests
+    await step.run("fire-daily-events", async () => {
       const events = orgs.map((orgId) => ({
         name: "digest/daily.requested" as const,
         data: { org_id: orgId },
@@ -95,6 +96,69 @@ export const cronDailyDigest = inngest.createFunction(
       await inngest.send(events);
     });
 
-    return { status: "ok", orgs_triggered: orgs.length };
+    // Fire weekly digests on Mondays (checked per org's local time)
+    const weeklyOrgs = await step.run("find-weekly-orgs", async () => {
+      const due: string[] = [];
+      const now = new Date();
+
+      for (const orgId of orgs) {
+        // Re-fetch org to get timezone
+        const [org] = await db
+          .select({
+            id: organizations.id,
+            plan: organizations.plan,
+            digestTimezone: organizations.digestTimezone,
+          })
+          .from(organizations)
+          .where(eq(organizations.id, orgId))
+          .limit(1);
+
+        if (!org || org.plan !== "pro") continue;
+
+        // Check if it's Monday in the org's timezone
+        try {
+          const zonedNow = toZonedTime(now, org.digestTimezone);
+          const dayOfWeek = zonedNow.getDay(); // 0=Sun, 1=Mon
+          if (dayOfWeek !== 1) continue;
+        } catch {
+          continue;
+        }
+
+        // Check if weekly already sent this week
+        const [existing] = await db
+          .select({ id: digestLogs.id })
+          .from(digestLogs)
+          .where(
+            and(
+              eq(digestLogs.orgId, orgId),
+              eq(digestLogs.kind, "weekly"),
+              sql`date(${digestLogs.sentAt}) = ${format(now, "yyyy-MM-dd")}`
+            )
+          )
+          .limit(1);
+
+        if (!existing) {
+          due.push(orgId);
+        }
+      }
+
+      return due;
+    });
+
+    if (weeklyOrgs.length > 0) {
+      await step.run("fire-weekly-events", async () => {
+        const events = weeklyOrgs.map((orgId) => ({
+          name: "digest/weekly.requested" as const,
+          data: { org_id: orgId },
+        }));
+        await inngest.send(events);
+      });
+    }
+
+    return {
+      status: "ok",
+      daily_triggered: orgs.length,
+      weekly_triggered: weeklyOrgs.length,
+    };
   }
 );

@@ -10,6 +10,7 @@ import { detectAnomaliesJob } from "@/lib/jobs/detect-anomalies";
 import { notifyAnomaly } from "@/lib/jobs/notify-anomaly";
 import { syncDeveloperCount } from "@/lib/jobs/sync-developer-count";
 import { enforceRetention } from "@/lib/jobs/enforce-retention";
+import { composeWeeklyDigest } from "@/lib/jobs/compose-weekly-digest";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -24,5 +25,6 @@ export const { GET, POST, PUT } = serve({
     notifyAnomaly,
     syncDeveloperCount,
     enforceRetention,
+    composeWeeklyDigest,
   ],
 });
