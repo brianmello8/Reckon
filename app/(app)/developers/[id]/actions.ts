@@ -14,6 +14,8 @@ import { getProviderClient } from "@/lib/providers/registry";
 import { ProviderAuthError } from "@/lib/providers/errors";
 import { subDays } from "date-fns";
 import { db } from "@/lib/db/client";
+import { organizations } from "@/lib/db/schema";
+import { PLAN_LIMITS, PlanLimitError } from "@/lib/plans/limits";
 
 const addKeySchema = z.object({
   developerId: z.string().uuid(),
@@ -85,6 +87,37 @@ export async function addProviderKey(formData: FormData) {
     .limit(1);
 
   if (!provider) throw new Error("Unknown provider");
+
+  // Check plan limits — free orgs can only use 1 provider
+  const [org] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, user.orgId))
+      .limit(1);
+  });
+
+  const limits = PLAN_LIMITS[org?.plan ?? "free"];
+  if (limits.maxProviders < Infinity) {
+    // Check which providers already have keys in this org
+    const existingProviders = await withOrgContext(user.orgId, async (tx) => {
+      return tx
+        .selectDistinct({ providerId: providerKeys.providerId })
+        .from(providerKeys)
+        .where(eq(providerKeys.orgId, user.orgId));
+    });
+
+    const existingProviderIds = existingProviders.map((p) => p.providerId);
+    if (
+      existingProviderIds.length >= limits.maxProviders &&
+      !existingProviderIds.includes(provider.id)
+    ) {
+      throw new PlanLimitError(
+        "Free plan supports 1 provider only. Upgrade to Pro for all providers.",
+        "maxProviders"
+      );
+    }
+  }
 
   // Validate the key by making a test API call
   const client = getProviderClient(parsed.providerKey);

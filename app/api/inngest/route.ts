@@ -9,6 +9,7 @@ import { cronDailyDigest } from "@/lib/jobs/cron-daily-digest";
 import { detectAnomaliesJob } from "@/lib/jobs/detect-anomalies";
 import { notifyAnomaly } from "@/lib/jobs/notify-anomaly";
 import { syncDeveloperCount } from "@/lib/jobs/sync-developer-count";
+import { enforceRetention } from "@/lib/jobs/enforce-retention";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -22,5 +23,6 @@ export const { GET, POST, PUT } = serve({
     detectAnomaliesJob,
     notifyAnomaly,
     syncDeveloperCount,
+    enforceRetention,
   ],
 });

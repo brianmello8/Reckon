@@ -2,10 +2,11 @@
 
 import { requireUser } from "@/lib/auth";
 import { withOrgContext } from "@/lib/db/rls";
-import { developers, providerKeys } from "@/lib/db/schema";
+import { developers, providerKeys, organizations } from "@/lib/db/schema";
 import { eq, and, isNull, count, max } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { PLAN_LIMITS, PlanLimitError } from "@/lib/plans/limits";
 
 const addDeveloperSchema = z.object({
   displayName: z.string().min(1).max(200),
@@ -19,6 +20,33 @@ export async function addDeveloper(formData: FormData) {
     displayName: formData.get("displayName"),
     email: formData.get("email"),
   });
+
+  // Check plan limits
+  const [org] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, user.orgId))
+      .limit(1);
+  });
+
+  const limits = PLAN_LIMITS[org?.plan ?? "free"];
+
+  const [devCount] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ count: count(developers.id) })
+      .from(developers)
+      .where(
+        and(eq(developers.orgId, user.orgId), isNull(developers.deletedAt))
+      );
+  });
+
+  if (Number(devCount?.count ?? 0) >= limits.maxDevelopers) {
+    throw new PlanLimitError(
+      `Free plan supports up to ${limits.maxDevelopers} developers. Upgrade to Pro for unlimited.`,
+      "maxDevelopers"
+    );
+  }
 
   const [dev] = await withOrgContext(user.orgId, async (tx) => {
     return tx

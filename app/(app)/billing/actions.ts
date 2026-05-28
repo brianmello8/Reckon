@@ -2,8 +2,8 @@
 
 import { requireAdmin } from "@/lib/auth";
 import { withOrgContext } from "@/lib/db/rls";
-import { organizations, developers } from "@/lib/db/schema";
-import { eq, and, isNull, count } from "drizzle-orm";
+import { organizations, developers, providerKeys } from "@/lib/db/schema";
+import { eq, and, isNull, count, countDistinct } from "drizzle-orm";
 import { stripe } from "@/lib/stripe/client";
 import {
   STRIPE_PRICE_MONTHLY,
@@ -37,6 +37,16 @@ export async function getBillingData() {
 
   const developerCount = Number(devCount?.count ?? 0);
 
+  // Count distinct providers used
+  const [provCount] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ count: countDistinct(providerKeys.providerId) })
+      .from(providerKeys)
+      .where(eq(providerKeys.orgId, user.orgId));
+  });
+
+  const providerCount = Number(provCount?.count ?? 0);
+
   // Get subscription details if Pro
   let subscription = null;
   if (org.stripeSubscriptionId) {
@@ -63,6 +73,7 @@ export async function getBillingData() {
     plan: org.plan,
     paymentStatus: org.paymentStatus,
     developerCount,
+    providerCount,
     subscription,
   };
 }

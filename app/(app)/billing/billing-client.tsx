@@ -14,6 +14,7 @@ type BillingData = {
   plan: string;
   paymentStatus: string | null;
   developerCount: number;
+  providerCount: number;
   subscription: {
     status: string;
     currentPeriodEnd: string;
@@ -122,7 +123,32 @@ export function BillingClient({ data }: { data: BillingData }) {
   }
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
+      {data.plan === "free" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Current usage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-zinc-500">Developers</p>
+                <p className="font-medium">{data.developerCount} of 3</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Providers</p>
+                <p className="font-medium">{data.providerCount} of 1</p>
+              </div>
+              <div>
+                <p className="text-zinc-500">Retention</p>
+                <p className="font-medium">30 days</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6 sm:grid-cols-2">
       {/* Free plan */}
       <Card>
         <CardHeader>
@@ -190,6 +216,7 @@ export function BillingClient({ data }: { data: BillingData }) {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
