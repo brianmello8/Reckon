@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -34,7 +35,14 @@ export function Sidebar({ className }: { className?: string }) {
       )}
     >
       <div className="flex h-14 items-center border-b px-4">
-        <Link href="/dashboard" className="text-lg font-semibold tracking-tight">
+        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <Image
+            src="/reckon-icon.png"
+            alt="Reckon"
+            width={24}
+            height={24}
+            className="rounded"
+          />
           Reckon
         </Link>
       </div>
