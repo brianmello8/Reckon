@@ -211,3 +211,80 @@ export async function repollKey(keyId: string) {
 
   return { success: true };
 }
+
+export async function sendInvite(developerId: string) {
+  const user = await requireUser();
+
+  const [dev] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select()
+      .from(developers)
+      .where(
+        and(eq(developers.id, developerId), eq(developers.orgId, user.orgId))
+      )
+      .limit(1);
+  });
+
+  if (!dev) throw new Error("Developer not found");
+
+  const [org] = await withOrgContext(user.orgId, async (tx) => {
+    return tx
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, user.orgId))
+      .limit(1);
+  });
+
+  const { signInviteToken } = await import("@/lib/invite-token");
+  const { developerInvites } = await import("@/lib/db/schema");
+  const { addDays } = await import("date-fns");
+
+  const expiresAt = addDays(new Date(), 7);
+
+  const [invite] = await db
+    .insert(developerInvites)
+    .values({
+      orgId: user.orgId,
+      developerId,
+      email: dev.email,
+      token: "pending",
+      expiresAt,
+    })
+    .returning();
+
+  const token = await signInviteToken({
+    inviteId: invite.id,
+    orgId: user.orgId,
+    developerId,
+    email: dev.email,
+  });
+
+  await db
+    .update(developerInvites)
+    .set({ token })
+    .where(eq(developerInvites.id, invite.id));
+
+  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
+
+  try {
+    const { Resend } = await import("resend");
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: "Reckon <noreply@getreckon.dev>",
+      to: dev.email,
+      subject: `Set up your AI spend tracking for ${org?.name ?? "your team"}`,
+      html: `
+        <h2>Hi ${dev.displayName},</h2>
+        <p>${org?.name ?? "Your team"} is using Reckon to track AI spend per developer.</p>
+        <p>To get set up, you'll need to add your Anthropic and/or OpenAI API keys. It takes about 5 minutes.</p>
+        <p><a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#18181b;color:white;text-decoration:none;border-radius:6px;font-weight:500;">Set up your keys</a></p>
+        <p style="color:#71717a;font-size:14px;">This link expires in 7 days.</p>
+      `,
+    });
+  } catch {
+    // Email failure is non-fatal — admin can copy the link
+  }
+
+  return { inviteUrl };
+}

@@ -22,8 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Key, ArrowLeft, RefreshCw } from "lucide-react";
-import { addProviderKey, revokeProviderKey, repollKey } from "./actions";
+import { Plus, Key, ArrowLeft, RefreshCw, Mail, Copy } from "lucide-react";
+import { addProviderKey, revokeProviderKey, repollKey, sendInvite } from "./actions";
 import { formatDistanceToNow, differenceInMinutes } from "date-fns";
 import Link from "next/link";
 
@@ -64,6 +64,8 @@ export function DeveloperDetail({
   const [addPending, startAddTransition] = useTransition();
   const [revokePending, startRevokeTransition] = useTransition();
   const [repollPending, startRepollTransition] = useTransition();
+  const [invitePending, startInviteTransition] = useTransition();
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   function handleAddKey(formData: FormData) {
     startAddTransition(async () => {
@@ -136,7 +138,42 @@ export function DeveloperDetail({
           </h1>
           <p className="mt-1 text-sm text-zinc-600">{developer.email}</p>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={invitePending}
+          onClick={() => {
+            startInviteTransition(async () => {
+              try {
+                const result = await sendInvite(developer.id);
+                setInviteUrl(result.inviteUrl);
+                toast.success("Invite sent");
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed");
+              }
+            });
+          }}
+        >
+          <Mail className="mr-2 h-4 w-4" />
+          {invitePending ? "Sending..." : "Invite to set up keys"}
+        </Button>
       </div>
+
+      {inviteUrl && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border bg-zinc-50 p-3">
+          <code className="flex-1 truncate text-xs text-zinc-600">{inviteUrl}</code>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              navigator.clipboard.writeText(inviteUrl);
+              toast.success("Link copied");
+            }}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       <Card className="mt-6">
         <CardHeader className="flex flex-row items-center justify-between">

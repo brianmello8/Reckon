@@ -268,6 +268,23 @@ export const digestLogs = pgTable("digest_logs", {
   error: text("error"),
 });
 
+export const developerInvites = pgTable("developer_invites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  developerId: uuid("developer_id")
+    .notNull()
+    .references(() => developers.id),
+  email: text("email").notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+});
+
 // --- Relations ---
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
