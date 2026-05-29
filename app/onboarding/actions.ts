@@ -6,60 +6,52 @@ import { organizations, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-const createOrgSchema = z.object({
+const ensureOrgSchema = z.object({
+  clerkOrgId: z.string().min(1),
   name: z.string().min(2).max(100),
+  slug: z.string().min(1),
 });
 
-export async function createOrganization(formData: FormData) {
+/**
+ * Mirror a just-created Clerk org (and its creator) into our DB synchronously,
+ * so /dashboard never races the organization webhook. Idempotent — the webhook
+ * remains the source of truth for ongoing membership changes.
+ */
+export async function ensureOrgRow(input: {
+  clerkOrgId: string;
+  name: string;
+  slug: string;
+}) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) throw new Error("Unauthorized");
 
-  const parsed = createOrgSchema.parse({
-    name: formData.get("name"),
-  });
+  const parsed = ensureOrgSchema.parse(input);
 
-  const slug = parsed.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  const clerk = await clerkClient();
-
-  // Create org in Clerk
-  const clerkOrg = await clerk.organizations.createOrganization({
-    name: parsed.name,
-    slug,
-    createdBy: clerkUserId,
-  });
-
-  // Create org in our DB (mirrors what the webhook would do)
   const [org] = await db
     .insert(organizations)
     .values({
-      clerkOrgId: clerkOrg.id,
+      clerkOrgId: parsed.clerkOrgId,
       name: parsed.name,
-      slug: clerkOrg.slug ?? slug,
+      slug: parsed.slug,
     })
     .onConflictDoNothing()
     .returning();
 
-  // If the org already existed (race with webhook), look it up
   const orgRow =
     org ??
     (
       await db
         .select()
         .from(organizations)
-        .where(eq(organizations.clerkOrgId, clerkOrg.id))
+        .where(eq(organizations.clerkOrgId, parsed.clerkOrgId))
         .limit(1)
     )[0];
 
   if (!orgRow) throw new Error("Failed to create organization");
 
-  // Get the user's info from Clerk
+  const clerk = await clerkClient();
   const clerkUser = await clerk.users.getUser(clerkUserId);
 
-  // Create user in our DB
   await db
     .insert(users)
     .values({
@@ -72,11 +64,6 @@ export async function createOrganization(formData: FormData) {
       role: "admin",
     })
     .onConflictDoNothing();
-
-  // Set the user's active organization in Clerk
-  await clerk.users.updateUser(clerkUserId, {
-    publicMetadata: { orgId: orgRow.id },
-  });
 
   return { orgId: orgRow.id, slug: orgRow.slug };
 }

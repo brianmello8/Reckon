@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import { getCurrentUser } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { Sidebar } from "./sidebar";
@@ -14,8 +15,14 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Distinguish "not signed in" (→ sign-in) from "signed in but no active org"
+  // (→ onboarding) to avoid a sign-in redirect loop for new users.
+  const { userId, orgId } = await auth();
+  if (!userId) redirect("/sign-in");
+  if (!orgId) redirect("/onboarding");
+
   const user = await getCurrentUser();
-  if (!user) redirect("/sign-in");
+  if (!user) redirect("/onboarding");
 
   const [org] = await db
     .select({ paymentStatus: organizations.paymentStatus })

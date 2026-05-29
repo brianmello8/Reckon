@@ -35,7 +35,7 @@ export default function MarketingLayout({
               <SignInButton mode="modal">
                 <button className="text-ink-2 hover:text-ink">Sign in</button>
               </SignInButton>
-              <SignUpButton mode="modal">
+              <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
                 <button className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:opacity-90">
                   Start free
                 </button>

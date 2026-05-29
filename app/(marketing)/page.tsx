@@ -53,7 +53,7 @@ export default function HomePage() {
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Show when="signed-out">
-            <SignUpButton mode="modal">
+            <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
               <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
                 Start free
               </button>
@@ -162,7 +162,7 @@ export default function HomePage() {
           </h2>
           <div className="mt-8 flex items-center justify-center gap-3">
             <Show when="signed-out">
-              <SignUpButton mode="modal">
+              <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
                 <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
                   Start free
                 </button>

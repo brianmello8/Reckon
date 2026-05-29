@@ -1,18 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useOrganizationList } from "@clerk/nextjs";
 import { Check } from "lucide-react";
-import { createOrganization } from "./actions";
+import { ensureOrgRow, checkOrgExists } from "./actions";
 import { Logo } from "@/components/reckon/primitives";
 
 const STEPS = ["Workspace", "Connect key", "Invite team", "Done"];
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { createOrganization, setActive, isLoaded } = useOrganizationList();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  // If the user already has an active org, skip onboarding.
+  useEffect(() => {
+    checkOrgExists()
+      .then((org) => {
+        if (org) router.replace("/dashboard");
+      })
+      .catch(() => {});
+  }, [router]);
 
   const slug =
     name
@@ -21,11 +32,29 @@ export default function OnboardingPage() {
       .replace(/^-|-$/g, "") || "your-team";
 
   async function handleSubmit(formData: FormData) {
+    if (!isLoaded || !createOrganization || !setActive) return;
     setPending(true);
     setError(null);
     try {
-      await createOrganization(formData);
-      await new Promise((r) => setTimeout(r, 1000));
+      const orgName = String(formData.get("name") ?? name).trim();
+      const orgSlug =
+        orgName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || `team-${Date.now()}`;
+
+      // Create the org client-side (Frontend API) so it becomes the
+      // ACTIVE organization on the session — server components then see auth().orgId.
+      const org = await createOrganization({ name: orgName, slug: orgSlug });
+      await setActive({ organization: org.id });
+
+      // Mirror into our DB synchronously so /dashboard doesn't race the webhook.
+      await ensureOrgRow({
+        clerkOrgId: org.id,
+        name: orgName,
+        slug: org.slug ?? orgSlug,
+      });
+
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -94,7 +123,7 @@ export default function OnboardingPage() {
 
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || !isLoaded}
             className="h-10 w-full rounded-lg bg-brand text-[14px] font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
             {pending ? "Creating…" : "Create workspace"}
