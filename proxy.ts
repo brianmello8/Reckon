@@ -13,6 +13,12 @@ const isPublicRoute = createRouteMatcher([
   "/api/health(.*)",
   "/api/webhooks(.*)",
   "/api/inngest(.*)",
+  // Slack calls these server-to-server (no Clerk session); they're secured by
+  // Slack request-signature verification inside the handlers, not by auth.
+  // /slack/install and /slack/callback are intentionally NOT public — they run
+  // in the browser and read the Clerk session.
+  "/api/integrations/slack/interactivity(.*)",
+  "/api/integrations/slack/commands(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

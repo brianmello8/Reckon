@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 import { db } from "@/lib/db/client";
 import { anomalies, slackInstallations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getSlackClient } from "@/lib/slack/client";
 import { buildAcknowledgedBlocks } from "@/lib/slack/messages/anomaly";
 import { format } from "date-fns";
@@ -67,11 +67,16 @@ export async function POST(req: NextRequest) {
 
       if (!install) continue;
 
-      // Acknowledge the anomaly
+      // Acknowledge the anomaly (scoped to the workspace's org).
       await db
         .update(anomalies)
         .set({ acknowledgedAt: new Date() })
-        .where(eq(anomalies.id, anomalyId));
+        .where(
+          and(
+            eq(anomalies.id, anomalyId),
+            eq(anomalies.orgId, install.orgId)
+          )
+        );
 
       // Update the original Slack message
       const client = await getSlackClient(install.orgId);
