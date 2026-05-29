@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import { PricingClient } from "./pricing-client";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Pricing — Reckon",
+export const metadata = pageMetadata({
+  title: "Pricing",
   description:
     "Free for up to 3 developers. Pro is $19/developer/month with a $99/mo minimum. No per-event fees. No surprise overages. Cancel anytime.",
-};
+  path: "/pricing",
+});
 
 export default function PricingPage() {
   return (

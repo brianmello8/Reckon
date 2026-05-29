@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import { Spike } from "@/components/reckon/primitives";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Security — Reckon",
+export const metadata = pageMetadata({
+  title: "Security",
   description:
     "How Reckon protects your data: read-only by design, never sees your prompts, envelope-encrypted keys, structural tenant isolation, signed webhooks.",
-};
+  path: "/security",
+});
 
 type Group = { title: string; points: { h: string; b: string }[] };
 

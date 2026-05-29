@@ -9,6 +9,12 @@ import { db } from "@/lib/db/client";
 import { organizations, anomalies } from "@/lib/db/schema";
 import { eq, and, isNull, count } from "drizzle-orm";
 import { withOrgContext } from "@/lib/db/rls";
+import type { Metadata } from "next";
+
+// The authenticated app is private — keep it out of search indexes.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AppLayout({
   children,

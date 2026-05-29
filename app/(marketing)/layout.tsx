@@ -2,6 +2,24 @@ import Link from "next/link";
 import Image from "next/image";
 import { SignInButton, SignUpButton, Show, UserButton } from "@clerk/nextjs";
 import { ThemeToggle } from "@/components/reckon/theme-toggle";
+import { JsonLd } from "@/components/reckon/json-ld";
+import { SITE_URL, SITE_NAME, SITE_DESCRIPTION } from "@/lib/seo";
+
+const orgLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE_NAME,
+  url: SITE_URL,
+  logo: `${SITE_URL}/reckon-icon.png`,
+  description: SITE_DESCRIPTION,
+};
+
+const siteLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  url: SITE_URL,
+};
 
 export default function MarketingLayout({
   children,
@@ -10,6 +28,8 @@ export default function MarketingLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-bg-warm">
+      <JsonLd data={orgLd} />
+      <JsonLd data={siteLd} />
       <header
         className="sticky top-0 z-10 border-b border-line backdrop-blur"
         style={{ background: "color-mix(in oklab, var(--paper) 82%, transparent)" }}

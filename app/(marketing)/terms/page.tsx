@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Terms of Service — Reckon",
+export const metadata = pageMetadata({
+  title: "Terms of Service",
   description:
     "The terms governing your use of Reckon, the read-only AI spend observability service.",
-};
+  path: "/terms",
+});
 
 // NOTE: Thorough Reckon-specific template. Have counsel review and set the
 // governing-law jurisdiction before relying on it.

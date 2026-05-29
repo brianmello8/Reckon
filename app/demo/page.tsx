@@ -1,11 +1,12 @@
-import type { Metadata } from "next";
 import { DemoApp } from "@/components/reckon/demo-app";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Reckon — Interactive demo",
+export const metadata = pageMetadata({
+  title: "Interactive demo",
   description:
     "Click through Reckon with sample data: per-developer AI spend, anomaly detection, and provider breakdowns.",
-};
+  path: "/demo",
+});
 
 export default function DemoPage() {
   return <DemoApp />;

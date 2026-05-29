@@ -1,15 +1,23 @@
 import Link from "next/link";
 import { SignUpButton, Show } from "@clerk/nextjs";
-import type { Metadata } from "next";
 import { HeroMock } from "@/components/reckon/hero-mock";
 import { MarketingShowcase, SlackMark } from "@/components/reckon/marketing-showcase";
 import { Spike } from "@/components/reckon/primitives";
+import { JsonLd } from "@/components/reckon/json-ld";
+import {
+  pageMetadata,
+  SITE_URL,
+  SITE_NAME,
+  SITE_TAGLINE,
+  SITE_DESCRIPTION,
+} from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Reckon — Know exactly where your AI spend is going",
-  description:
-    "Per-developer attribution for Anthropic, OpenAI, and Copilot. Anomaly alerts in Slack. Read-only — never sees your prompts.",
-};
+export const metadata = pageMetadata({
+  title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+  description: SITE_DESCRIPTION,
+  path: "/",
+  absoluteTitle: true,
+});
 
 const STEPS = [
   { n: "1", t: "Connect provider keys", b: "Each developer adds their own Anthropic, OpenAI, or Copilot key. No proxy, no SDK, no code changes." },
@@ -37,9 +45,47 @@ const FAQ = [
   { q: "Will this slow down our AI calls?", a: "No. We are never in the request path, so there is zero added latency." },
 ];
 
+const softwareLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: SITE_NAME,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description: SITE_DESCRIPTION,
+  url: SITE_URL,
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Free",
+      price: "0",
+      priceCurrency: "USD",
+      description: "Up to 3 developers, one provider, daily digest.",
+    },
+    {
+      "@type": "Offer",
+      name: "Pro",
+      price: "19",
+      priceCurrency: "USD",
+      description: "Per developer / month ($99/mo minimum). All providers, weekly digest, Linear.",
+    },
+  ],
+};
+
+const faqLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
 export default function HomePage() {
   return (
     <div>
+      <JsonLd data={softwareLd} />
+      <JsonLd data={faqLd} />
       {/* Hero */}
       <section className="mx-auto max-w-5xl px-6 pb-10 pt-20 text-center">
         <span className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-[12.5px] font-medium text-brand-ink">

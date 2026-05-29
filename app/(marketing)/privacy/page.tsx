@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy — Reckon",
+export const metadata = pageMetadata({
+  title: "Privacy Policy",
   description:
     "How Reckon collects, uses, and protects data. We are a read-only observer — we never see your AI prompts or responses.",
-};
+  path: "/privacy",
+});
 
 // NOTE: This is a thorough, Reckon-specific template. Have counsel review
 // before relying on it, and confirm the sub-processor list stays current.
