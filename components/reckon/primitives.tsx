@@ -196,7 +196,7 @@ export function Sparkline({
   const maxIdx = values.indexOf(Math.max(...values));
   const areaD = `${d} L ${last[0]},${h} L ${pts[0][0]},${h} Z`;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block overflow-visible">
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block h-auto max-w-full overflow-visible">
       {fill && (
         <>
           <defs>
