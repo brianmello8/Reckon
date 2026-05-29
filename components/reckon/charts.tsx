@@ -87,11 +87,17 @@ export function AreaChart({
   return (
     <div
       ref={wrapRef}
-      className="relative w-full overflow-hidden"
+      className="relative w-full min-w-0 overflow-hidden"
       onMouseMove={onMove}
       onMouseLeave={() => setHover(null)}
     >
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="block max-w-full">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
+        preserveAspectRatio="xMidYMid meet"
+        className="block h-auto w-full max-w-full"
+      >
         {gl.map((v, i) => (
           <g key={i}>
             <line x1={PAD.l} x2={W - PAD.r} y1={yAt(v)} y2={yAt(v)} stroke="var(--line)" strokeWidth="1" />
