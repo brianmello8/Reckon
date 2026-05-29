@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description:
       "Per-developer attribution for Anthropic, OpenAI, and Copilot. Anomaly alerts in Slack.",
     start_url: "/",
-    display: "standalone",
+    display: "browser",
     background_color: "#f6f4ef",
     theme_color: "#c2742e",
     icons: [
