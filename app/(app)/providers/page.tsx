@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/reckon/page-head";
 import { requireUser } from "@/lib/auth";
 import { withOrgContext } from "@/lib/db/rls";
 import { providerKeys, providers } from "@/lib/db/schema";
@@ -56,17 +57,11 @@ export default async function ProvidersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Providers</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            AI providers we support for usage tracking.
-          </p>
-        </div>
+      <PageHead title="Providers" sub="AI providers we poll for usage and cost.">
         <IngestNowButton />
-      </div>
+      </PageHead>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {allProviders.map((provider) => {
           const docs = PROVIDER_DOCS[provider.key];
           const activeKeys = countMap.get(provider.id) ?? 0;

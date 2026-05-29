@@ -1,5 +1,6 @@
 import { getAnomalies } from "./actions";
 import { AnomaliesList } from "./anomalies-list";
+import { PageHead } from "@/components/reckon/page-head";
 
 export default async function AnomaliesPage({
   searchParams,
@@ -12,14 +13,11 @@ export default async function AnomaliesPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">Anomalies</h1>
-      <p className="mt-1 text-sm text-zinc-600">
-        Unusual spending patterns detected across your developers.
-      </p>
-
-      <div className="mt-6">
-        <AnomaliesList anomalies={anomalies} currentFilter={filter} />
-      </div>
+      <PageHead
+        title="Anomalies"
+        sub="Unusual spend patterns flagged at mean + 3σ across your developers."
+      />
+      <AnomaliesList anomalies={anomalies} currentFilter={filter} />
     </div>
   );
 }
