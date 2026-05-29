@@ -42,13 +42,18 @@ export function PricingClient() {
           Monthly
         </button>
         <button
+          type="button"
+          role="switch"
+          aria-checked={annual}
           onClick={() => setAnnual(!annual)}
-          className="relative h-6 w-11 rounded-full bg-ink transition-colors"
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+            annual ? "bg-brand" : "bg-line-2"
+          }`}
           aria-label="Toggle annual billing"
         >
           <span
-            className={`absolute top-0.5 h-5 w-5 rounded-full bg-paper transition-transform ${
-              annual ? "translate-x-5" : "translate-x-0.5"
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              annual ? "translate-x-6" : "translate-x-1"
             }`}
           />
         </button>
