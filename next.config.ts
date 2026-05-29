@@ -1,14 +1,20 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+// Clerk loads its JS from the instance's Frontend API host: the production
+// custom domain (clerk.getreckon.dev) and the dev domain (*.clerk.accounts.dev).
+// Bot protection uses Cloudflare Turnstile (challenges.cloudflare.com).
+const CLERK = "https://clerk.getreckon.dev https://*.clerk.accounts.dev https://*.clerk.com";
+const TURNSTILE = "https://challenges.cloudflare.com";
+
 const cspHeader = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://js.stripe.com",
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${CLERK} ${TURNSTILE} https://js.stripe.com`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com",
+  `img-src 'self' data: blob: ${CLERK} https://img.clerk.com`,
   "font-src 'self' data:",
-  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://api.stripe.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.sentry.io",
-  "frame-src https://js.stripe.com https://*.clerk.accounts.dev",
+  `connect-src 'self' ${CLERK} https://clerk-telemetry.com https://api.stripe.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.sentry.io`,
+  `frame-src 'self' ${CLERK} ${TURNSTILE} https://js.stripe.com`,
   "worker-src 'self' blob:",
 ].join("; ");
 
