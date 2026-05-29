@@ -21,21 +21,22 @@ export default function MarketingLayout({
             />
             Reckon
           </Link>
-          <nav className="flex items-center gap-6 text-sm">
-            <Link href="/pricing" className="text-zinc-600 hover:text-zinc-900">
+          <nav className="flex items-center gap-5 text-sm">
+            <Link href="/demo" className="hidden text-ink-2 hover:text-ink sm:block">
+              Demo
+            </Link>
+            <Link href="/pricing" className="hidden text-ink-2 hover:text-ink sm:block">
               Pricing
             </Link>
-            <Link href="/security" className="text-zinc-600 hover:text-zinc-900">
+            <Link href="/security" className="hidden text-ink-2 hover:text-ink sm:block">
               Security
             </Link>
             <Show when="signed-out">
               <SignInButton mode="modal">
-                <button className="text-zinc-600 hover:text-zinc-900">
-                  Sign in
-                </button>
+                <button className="text-ink-2 hover:text-ink">Sign in</button>
               </SignInButton>
               <SignUpButton mode="modal">
-                <button className="rounded-md bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-800">
+                <button className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:opacity-90">
                   Start free
                 </button>
               </SignUpButton>
@@ -43,7 +44,7 @@ export default function MarketingLayout({
             <Show when="signed-in">
               <Link
                 href="/dashboard"
-                className="rounded-md bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-800"
+                className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:opacity-90"
               >
                 Dashboard
               </Link>

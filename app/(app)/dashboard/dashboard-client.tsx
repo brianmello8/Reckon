@@ -112,16 +112,24 @@ export function DashboardClient({
   range,
   orgName,
   recentAnomalies,
+  demo = false,
 }: {
   data: DashboardData;
   range: string;
   orgName: string;
   recentAnomalies: Anomaly[];
+  demo?: boolean;
 }) {
   const router = useRouter();
+  const [localRange, setLocalRange] = React.useState(range);
   const [mode, setMode] = React.useState<"provider" | "developer" | "model">(
     "provider"
   );
+  const activeRange = demo ? localRange : range;
+  const devHref = (id: string) => (demo ? "#" : `/developers/${id}`);
+  const anomaliesHref = demo ? "#" : "/anomalies";
+  const onRangeChange = (v: string) =>
+    demo ? setLocalRange(v) : router.push(`/dashboard?range=${v}`);
 
   const totalDollars = microsToDollars(data.stats.totalCostMicros);
   const priorDollars = microsToDollars(data.stats.priorCostMicros);
@@ -187,8 +195,8 @@ export function DashboardClient({
       >
         <Segmented
           options={RANGES.map((r) => ({ value: r.value, label: r.label }))}
-          value={range as string}
-          onChange={(v) => router.push(`/dashboard?range=${v}`)}
+          value={activeRange}
+          onChange={onRangeChange}
         />
         <button className="inline-flex h-[30px] items-center gap-1.5 rounded-md border border-line-2 bg-paper px-3 text-[12.5px] font-medium text-ink hover:bg-bg-2">
           <Download size={14} /> Export
@@ -340,7 +348,7 @@ export function DashboardClient({
               return (
                 <Link
                   key={d.developerId}
-                  href={`/developers/${d.developerId}`}
+                  href={devHref(d.developerId)}
                   className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-bg-2"
                 >
                   <span className="mono w-4 text-[12px] text-ink-4">{i + 1}</span>
@@ -381,7 +389,7 @@ export function DashboardClient({
               recentAnomalies.map((a) => (
                 <Link
                   key={a.id}
-                  href="/anomalies"
+                  href={anomaliesHref}
                   className="block rounded-lg border-l-[3px] bg-bg-2 px-3 py-2.5 transition-opacity hover:opacity-80"
                   style={{ borderColor: severityColor(a.severity) }}
                 >

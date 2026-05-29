@@ -1,176 +1,181 @@
 import Link from "next/link";
 import { SignUpButton, Show } from "@clerk/nextjs";
 import type { Metadata } from "next";
+import { HeroMock } from "@/components/reckon/hero-mock";
+import { Spike } from "@/components/reckon/primitives";
 
 export const metadata: Metadata = {
-  title: "Reckon — Know exactly what your team spends on AI",
+  title: "Reckon — Know exactly where your AI spend is going",
   description:
-    "Per-developer attribution for Anthropic, OpenAI, and Copilot. Anomaly alerts in Slack. No proxy required.",
+    "Per-developer attribution for Anthropic, OpenAI, and Copilot. Anomaly alerts in Slack. Read-only — never sees your prompts.",
 };
 
+const STEPS = [
+  { n: "1", t: "Connect provider keys", b: "Each developer adds their own Anthropic, OpenAI, or Copilot key. No proxy, no SDK, no code changes." },
+  { n: "2", t: "We poll usage hourly", b: "Reckon reads the providers' own usage APIs and attributes every dollar to a developer, model, and day." },
+  { n: "3", t: "Get digests + alerts", b: "A daily Slack digest, weekly recap, and same-day anomaly alerts when someone's spend spikes." },
+];
+
 const FEATURES = [
-  {
-    title: "Per-developer attribution",
-    body: "See exactly who is spending what across Anthropic, OpenAI, and GitHub Copilot — joined to real people, not anonymous keys.",
-  },
-  {
-    title: "Anomaly alerts in Slack",
-    body: "When someone's spend spikes 4× their normal, you hear about it the same day — not at the end of the month when the invoice lands.",
-  },
-  {
-    title: "Zero workflow changes",
-    body: "We poll provider usage APIs on a schedule. No proxy, no latency, no changes to how your developers work. They feel nothing.",
-  },
+  { t: "Per-developer attribution", b: "See exactly who spends what across every provider — joined to real people, not anonymous keys." },
+  { t: "Anomaly alerts in Slack", b: "When spend spikes 4× normal, you hear about it the same day — not when the invoice lands." },
+  { t: "Slack + Linear built in", b: "Daily digests to a channel, and a Linear issue filed automatically on every critical anomaly." },
+  { t: "Run-rate forecasting", b: "Project the month from the trend so a runaway agent never becomes a surprise five-figure line item." },
+];
+
+const SECURITY = [
+  { t: "Read-only by design", b: "We never sit in your request path. No proxy, no TLS termination, no latency." },
+  { t: "We never see content", b: "We poll usage APIs for token counts and cost. Prompts and responses never reach us." },
+  { t: "Keys encrypted with KMS", b: "Envelope encryption per key; decrypted only inside the ingestion worker, never the web app." },
 ];
 
 const FAQ = [
-  {
-    q: "Do you see our prompts or responses?",
-    a: "No. We are a passive observer — we poll the providers' usage APIs and read what they already report. We never sit in your request path and never see content.",
-  },
-  {
-    q: "How does per-developer attribution work?",
-    a: "Each developer uses their own API key, tagged with their identity in Reckon. Provider usage APIs report at the key level, so we join usage straight through to the person — no proxy required.",
-  },
-  {
-    q: "Which providers do you support?",
-    a: "Anthropic, OpenAI, and GitHub Copilot in v1. More as customers ask.",
-  },
-  {
-    q: "Will this slow down our AI calls?",
-    a: "No. We are never in the request path. There is zero added latency because we don't touch live traffic.",
-  },
+  { q: "Do you see our prompts or responses?", a: "No. We poll the providers' usage APIs and read what they already report. We never sit in your request path and never see content." },
+  { q: "How does per-developer attribution work?", a: "Each developer uses their own API key, tagged with their identity in Reckon. Provider usage APIs report at the key level, so we join usage straight through to the person — no proxy required." },
+  { q: "Which providers do you support?", a: "Anthropic, OpenAI, and GitHub Copilot in v1. More as customers ask." },
+  { q: "Will this slow down our AI calls?", a: "No. We are never in the request path, so there is zero added latency." },
 ];
 
 export default function HomePage() {
   return (
     <div>
       {/* Hero */}
-      <section className="mx-auto max-w-5xl px-6 py-24 text-center">
-        <h1 className="mx-auto max-w-3xl text-5xl font-semibold tracking-tight text-zinc-900">
-          Know exactly what your team spends on AI.
+      <section className="mx-auto max-w-5xl px-6 pb-10 pt-20 text-center">
+        <span className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-[12.5px] font-medium text-brand-ink">
+          <Spike size={15} /> Read-only · never sees your prompts
+        </span>
+        <h1 className="mx-auto mt-6 max-w-3xl text-[clamp(36px,6vw,60px)] font-semibold leading-[1.05] tracking-[-0.035em] text-ink">
+          Know exactly where your AI spend is going.
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg text-zinc-600">
+        <p className="mx-auto mt-5 max-w-2xl text-lg text-ink-2">
           Per-developer attribution for Anthropic, OpenAI, and Copilot. Anomaly
           alerts in Slack. No proxy required.
         </p>
-        <div className="mt-10 flex items-center justify-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Show when="signed-out">
             <SignUpButton mode="modal">
-              <button className="rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-800">
+              <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
                 Start free
               </button>
             </SignUpButton>
           </Show>
           <Show when="signed-in">
-            <Link
-              href="/dashboard"
-              className="rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-800"
-            >
+            <Link href="/dashboard" className="inline-flex h-11 items-center rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
               Go to dashboard
             </Link>
           </Show>
           <Link
-            href="/pricing"
-            className="rounded-md border border-zinc-300 px-6 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            href="/demo"
+            className="inline-flex h-11 items-center rounded-lg border border-line-2 bg-paper px-6 text-[15px] font-medium text-ink hover:bg-bg-2"
           >
-            See pricing
+            Explore the demo
           </Link>
         </div>
+        <p className="mt-4 text-[13px] text-ink-3">
+          Free for up to 3 developers · no credit card · 5-minute setup
+        </p>
       </section>
 
-      {/* The problem */}
-      <section className="border-y bg-zinc-50">
-        <div className="mx-auto max-w-3xl px-6 py-20">
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-            The problem
+      {/* Dashboard mock */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <HeroMock />
+      </section>
+
+      {/* How it works */}
+      <section className="border-y border-line bg-paper">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <h2 className="text-center text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
+            How it works
           </h2>
-          <p className="mt-4 text-2xl font-medium leading-relaxed text-zinc-900">
-            Some of the world&apos;s largest companies have blown through annual
-            AI budgets in months. The spend is real, it&apos;s growing, and most
-            engineering managers have no idea who&apos;s driving it until the
-            invoice arrives.
-          </p>
-          <p className="mt-4 text-lg text-zinc-600">
-            Reckon gives you per-developer visibility and same-day anomaly
-            alerts, so a runaway script or a misconfigured agent never becomes a
-            surprise five-figure line item.
-          </p>
+          <div className="mt-12 grid gap-8 sm:grid-cols-3">
+            {STEPS.map((s) => (
+              <div key={s.n}>
+                <span className="mono flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-[15px] font-semibold text-brand-ink">
+                  {s.n}
+                </span>
+                <h3 className="mt-4 text-[16px] font-semibold text-ink">{s.t}</h3>
+                <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{s.b}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* The product */}
+      {/* Features */}
       <section className="mx-auto max-w-5xl px-6 py-20">
-        <h2 className="text-center text-3xl font-semibold tracking-tight">
+        <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
           One thing, done well.
         </h2>
-        <div className="mt-12 grid gap-8 sm:grid-cols-3">
+        <div className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2">
           {FEATURES.map((f) => (
-            <div key={f.title}>
-              <h3 className="text-lg font-medium text-zinc-900">{f.title}</h3>
-              <p className="mt-2 text-zinc-600">{f.body}</p>
+            <div key={f.t}>
+              <h3 className="text-[16px] font-semibold text-ink">{f.t}</h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{f.b}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Pricing snapshot */}
-      <section className="border-y bg-zinc-50">
-        <div className="mx-auto max-w-3xl px-6 py-20 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight">
-            Simple, per-seat pricing.
+      {/* Security */}
+      <section className="bg-ink">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-paper">
+            Built to be the safest vendor you onboard.
           </h2>
-          <p className="mt-4 text-lg text-zinc-600">
-            Free for up to 3 developers. Pro is $19 per developer per month, with
-            a $99/mo minimum. No per-event fees. No surprise overages. Cancel
-            anytime.
-          </p>
+          <div className="mt-10 grid gap-8 sm:grid-cols-3">
+            {SECURITY.map((s) => (
+              <div key={s.t}>
+                <h3 className="text-[15px] font-semibold text-paper">{s.t}</h3>
+                <p className="mt-2 text-[13.5px] leading-relaxed text-[#b6bccb]">{s.b}</p>
+              </div>
+            ))}
+          </div>
           <Link
-            href="/pricing"
-            className="mt-8 inline-block rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+            href="/security"
+            className="mt-8 inline-block text-[13.5px] font-medium text-[#d2894a] hover:underline"
           >
-            See full pricing
+            Read the full security overview →
           </Link>
         </div>
       </section>
 
       {/* FAQ */}
       <section className="mx-auto max-w-3xl px-6 py-20">
-        <h2 className="text-3xl font-semibold tracking-tight">
+        <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
           Frequently asked
         </h2>
         <div className="mt-10 space-y-8">
           {FAQ.map((item) => (
             <div key={item.q}>
-              <h3 className="font-medium text-zinc-900">{item.q}</h3>
-              <p className="mt-2 text-zinc-600">{item.a}</p>
+              <h3 className="font-medium text-ink">{item.q}</h3>
+              <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{item.a}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* CTA */}
-      <section className="border-t">
+      <section className="border-t border-line">
         <div className="mx-auto max-w-3xl px-6 py-20 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight">
+          <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
             Stop guessing what AI costs you.
           </h2>
-          <div className="mt-8">
+          <div className="mt-8 flex items-center justify-center gap-3">
             <Show when="signed-out">
               <SignUpButton mode="modal">
-                <button className="rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-800">
+                <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
                   Start free
                 </button>
               </SignUpButton>
             </Show>
             <Show when="signed-in">
-              <Link
-                href="/dashboard"
-                className="rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white hover:bg-zinc-800"
-              >
+              <Link href="/dashboard" className="inline-flex h-11 items-center rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
                 Go to dashboard
               </Link>
             </Show>
+            <Link href="/demo" className="inline-flex h-11 items-center rounded-lg border border-line-2 bg-paper px-6 text-[15px] font-medium text-ink hover:bg-bg-2">
+              Explore the demo
+            </Link>
           </div>
         </div>
       </section>
