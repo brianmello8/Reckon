@@ -38,6 +38,7 @@ export function pageMetadata({
       url: path,
       title: absoluteTitle ? title : `${title} · ${SITE_NAME}`,
       description,
+      images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: SITE_NAME }],
     },
     twitter: {
       card: "summary_large_image",
@@ -45,6 +46,7 @@ export function pageMetadata({
       creator: TWITTER_HANDLE,
       title: absoluteTitle ? title : `${title} · ${SITE_NAME}`,
       description,
+      images: ["/opengraph-image"],
     },
   };
 }

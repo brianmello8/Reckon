@@ -51,6 +51,7 @@ export const metadata: Metadata = {
     url: "/",
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: SITE_DESCRIPTION,
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: SITE_NAME }],
   },
   twitter: {
     card: "summary_large_image",
@@ -58,6 +59,7 @@ export const metadata: Metadata = {
     creator: TWITTER_HANDLE,
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: SITE_DESCRIPTION,
+    images: ["/opengraph-image"],
   },
   robots: {
     index: true,
