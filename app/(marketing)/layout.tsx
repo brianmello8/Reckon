@@ -69,7 +69,7 @@ export default function MarketingLayout({
             <Link href="/security" className="hover:text-zinc-900">
               Security
             </Link>
-            <a href="mailto:hello@getreckon.dev" className="hover:text-zinc-900">
+            <a href="mailto:brianmello96@gmail.com" className="hover:text-zinc-900">
               Contact
             </a>
           </div>

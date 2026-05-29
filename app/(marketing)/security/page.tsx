@@ -53,8 +53,8 @@ export default function SecurityPage() {
 
       <p className="mt-12 text-sm text-zinc-500">
         Questions about our security posture? Email{" "}
-        <a href="mailto:security@getreckon.dev" className="underline">
-          security@getreckon.dev
+        <a href="mailto:brianmello96@gmail.com" className="underline">
+          brianmello96@gmail.com
         </a>
         .
       </p>

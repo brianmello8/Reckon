@@ -226,8 +226,8 @@ export default function TermsPage() {
         <Section title="18. Contact">
           <p>
             Questions about these Terms? Email{" "}
-            <a href="mailto:hello@getreckon.dev" className="text-brand-ink underline">
-              hello@getreckon.dev
+            <a href="mailto:brianmello96@gmail.com" className="text-brand-ink underline">
+              brianmello96@gmail.com
             </a>
             .
           </p>

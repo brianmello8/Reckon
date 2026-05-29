@@ -187,8 +187,8 @@ export default function PrivacyPage() {
             correct, export, or delete your personal data, and to object to or
             restrict certain processing. You can exercise these rights — or ask
             us to delete your organization&apos;s data at any time — by emailing{" "}
-            <a href="mailto:privacy@getreckon.dev" className="text-brand-ink underline">
-              privacy@getreckon.dev
+            <a href="mailto:brianmello96@gmail.com" className="text-brand-ink underline">
+              brianmello96@gmail.com
             </a>
             . We do not sell personal information.
           </p>
@@ -244,8 +244,8 @@ export default function PrivacyPage() {
         <Section title="14. Contact">
           <p>
             Questions or requests? Email{" "}
-            <a href="mailto:privacy@getreckon.dev" className="text-brand-ink underline">
-              privacy@getreckon.dev
+            <a href="mailto:brianmello96@gmail.com" className="text-brand-ink underline">
+              brianmello96@gmail.com
             </a>
             .
           </p>
