@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SignUpButton, Show } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { HeroMock } from "@/components/reckon/hero-mock";
+import { MarketingShowcase, SlackMark } from "@/components/reckon/marketing-showcase";
 import { Spike } from "@/components/reckon/primitives";
 
 export const metadata: Metadata = {
@@ -101,6 +102,47 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Showcase — where your spend shows up (Slack-forward) */}
+      <section className="border-b border-line bg-paper">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <span className="inline-flex items-center gap-2 rounded-full border border-line-2 bg-bg-warm px-3 py-1 text-[12.5px] font-medium text-ink-2">
+            <SlackMark size={15} /> Slack app included
+          </span>
+          <h2 className="mt-5 max-w-2xl text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
+            Your spend, where your team already looks.
+          </h2>
+          <p className="mt-3 max-w-2xl text-[15px] text-ink-2">
+            Install the Reckon Slack app and a daily digest posts to your
+            channel, anomaly alerts fire the same day with one-click acknowledge,
+            and anyone can pull numbers with <span className="mono">/spend</span>.
+            Critical anomalies also file a Linear issue automatically.
+          </p>
+
+          <div className="mt-8">
+            <MarketingShowcase />
+          </div>
+
+          <div className="mt-8 grid gap-x-10 gap-y-3 text-[14px] text-ink-2 sm:grid-cols-2">
+            <p>
+              <span className="font-medium text-ink">Daily &amp; weekly digests</span> — totals,
+              top spenders, and open anomalies posted to your channel.
+            </p>
+            <p>
+              <span className="font-medium text-ink">Anomaly alerts</span> — severity-colored,
+              with Acknowledge and Investigate right in Slack.
+            </p>
+            <p>
+              <span className="font-medium text-ink">/spend slash command</span> — today,
+              yesterday, this week, or a specific developer, on demand.
+            </p>
+            <p>
+              <span className="font-medium text-ink">Linear integration</span> — every critical
+              anomaly becomes an Urgent issue, auto-closed on acknowledge.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="mx-auto max-w-5xl px-6 py-20">
         <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
@@ -116,16 +158,16 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Security */}
-      <section className="bg-ink">
+      {/* Security — intentionally always-navy panel (theme-independent) */}
+      <section className="bg-[#1a2540]">
         <div className="mx-auto max-w-5xl px-6 py-20">
-          <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-paper">
+          <h2 className="text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-white">
             Built to be the safest vendor you onboard.
           </h2>
           <div className="mt-10 grid gap-8 sm:grid-cols-3">
             {SECURITY.map((s) => (
               <div key={s.t}>
-                <h3 className="text-[15px] font-semibold text-paper">{s.t}</h3>
+                <h3 className="text-[15px] font-semibold text-white">{s.t}</h3>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-[#b6bccb]">{s.b}</p>
               </div>
             ))}

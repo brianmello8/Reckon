@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { SignInButton, SignUpButton, Show, UserButton } from "@clerk/nextjs";
+import { ThemeToggle } from "@/components/reckon/theme-toggle";
 
 export default function MarketingLayout({
   children,
@@ -8,10 +9,13 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
-      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
+    <div className="flex min-h-screen flex-col bg-bg-warm">
+      <header
+        className="sticky top-0 z-10 border-b border-line backdrop-blur"
+        style={{ background: "color-mix(in oklab, var(--paper) 82%, transparent)" }}
+      >
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink">
             <Image
               src="/reckon-icon.png"
               alt="Reckon"
@@ -31,6 +35,7 @@ export default function MarketingLayout({
             <Link href="/security" className="hidden text-ink-2 hover:text-ink sm:block">
               Security
             </Link>
+            <ThemeToggle />
             <Show when="signed-out">
               <SignInButton mode="modal">
                 <button className="text-ink-2 hover:text-ink">Sign in</button>
@@ -56,20 +61,20 @@ export default function MarketingLayout({
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t">
-        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-zinc-500 sm:flex-row">
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-ink-3 sm:flex-row">
           <p>© {new Date().getFullYear()} Reckon. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <Link href="/privacy" className="hover:text-zinc-900">
+            <Link href="/privacy" className="hover:text-ink">
               Privacy
             </Link>
-            <Link href="/terms" className="hover:text-zinc-900">
+            <Link href="/terms" className="hover:text-ink">
               Terms
             </Link>
-            <Link href="/security" className="hover:text-zinc-900">
+            <Link href="/security" className="hover:text-ink">
               Security
             </Link>
-            <a href="mailto:brianmello96@gmail.com" className="hover:text-zinc-900">
+            <a href="mailto:brianmello96@gmail.com" className="hover:text-ink">
               Contact
             </a>
           </div>
