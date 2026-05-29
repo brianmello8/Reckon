@@ -7,7 +7,7 @@ const cspHeader = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://api.stripe.com https://*.sentry.io https://*.ingest.sentry.io",
+  "connect-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://api.stripe.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.sentry.io",
   "frame-src https://js.stripe.com https://*.clerk.accounts.dev",
   "worker-src 'self' blob:",
 ].join("; ");
@@ -32,10 +32,6 @@ export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
-  // Route browser events through a same-origin proxy so they aren't blocked
-  // by ad-blockers or our CSP (the ingest host is multi-label and wouldn't
-  // match a simple connect-src wildcard).
-  tunnelRoute: "/monitoring",
   widenClientFileUpload: true,
   silent: !process.env.CI,
 });
