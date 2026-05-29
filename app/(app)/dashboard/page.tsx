@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { format, subDays } from "date-fns";
 import { getDashboardData } from "./queries";
+import { getAnomalies } from "../anomalies/actions";
 import { DashboardClient } from "./dashboard-client";
 
 export default async function DashboardPage({
@@ -38,14 +39,33 @@ export default async function DashboardPage({
       to = format(now, "yyyy-MM-dd");
   }
 
-  const data = await getDashboardData(user.orgId, from, to);
+  const [data, anomalies] = await Promise.all([
+    getDashboardData(user.orgId, from, to),
+    getAnomalies("unacknowledged"),
+  ]);
+
+  const recentAnomalies = anomalies.slice(0, 4).map((a) => ({
+    id: a.id,
+    developerId: a.developerId,
+    developerName: a.developerName,
+    kind: a.kind,
+    severity: a.severity as "info" | "warn" | "critical",
+    multiple:
+      (a.details as Record<string, unknown> | null)?.multiple != null
+        ? Number((a.details as Record<string, unknown>).multiple)
+        : null,
+    detectedAt:
+      a.detectedAt instanceof Date
+        ? a.detectedAt.toISOString()
+        : String(a.detectedAt),
+  }));
 
   return (
     <DashboardClient
       data={data}
       range={range}
-      from={from}
-      to={to}
+      orgName={user.orgName}
+      recentAnomalies={recentAnomalies}
     />
   );
 }
