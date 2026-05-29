@@ -5,8 +5,9 @@ import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { PaymentBanner } from "@/components/payment-banner";
 import { db } from "@/lib/db/client";
-import { organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { organizations, anomalies } from "@/lib/db/schema";
+import { eq, and, isNull, count } from "drizzle-orm";
+import { withOrgContext } from "@/lib/db/rls";
 
 export default async function AppLayout({
   children,
@@ -24,16 +25,32 @@ export default async function AppLayout({
 
   const isPastDue = org?.paymentStatus === "past_due";
 
+  // Unacknowledged anomaly count for the nav badge.
+  const [{ value: unackCount } = { value: 0 }] = await withOrgContext(
+    user.orgId,
+    async (tx) =>
+      tx
+        .select({ value: count(anomalies.id) })
+        .from(anomalies)
+        .where(
+          and(
+            eq(anomalies.orgId, user.orgId),
+            isNull(anomalies.acknowledgedAt)
+          )
+        )
+  );
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Desktop sidebar */}
-      <Sidebar className="hidden lg:flex" />
+    <div className="flex h-screen overflow-hidden bg-bg-warm">
+      <Sidebar className="hidden lg:flex" unackCount={Number(unackCount)} />
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {isPastDue && <PaymentBanner />}
-        <TopBar user={user} />
-        <main className="flex-1 overflow-y-auto bg-zinc-50 p-6">
-          {children}
+        <TopBar user={user} unackCount={Number(unackCount)} />
+        <main className="flex-1 overflow-y-auto bg-bg-warm">
+          <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up">
+            {children}
+          </div>
         </main>
       </div>
 
