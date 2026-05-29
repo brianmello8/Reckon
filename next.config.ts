@@ -31,6 +31,11 @@ const nextConfig: NextConfig = {
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  silent: true,
-  disableLogger: true,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Route browser events through a same-origin proxy so they aren't blocked
+  // by ad-blockers or our CSP (the ingest host is multi-label and wouldn't
+  // match a simple connect-src wildcard).
+  tunnelRoute: "/monitoring",
+  widenClientFileUpload: true,
+  silent: !process.env.CI,
 });
