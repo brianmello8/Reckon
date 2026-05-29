@@ -113,6 +113,31 @@ export function DemoApp() {
           </div>
         </header>
 
+        {/* Mobile screen nav (sidebar is hidden below lg) */}
+        <nav className="flex gap-1 overflow-x-auto border-b border-line bg-paper px-3 py-2 lg:hidden">
+          {NAV.map((item) => {
+            const on = screen === item.id;
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setScreen(item.id)}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                  on ? "bg-bg-2 text-ink" : "text-ink-3"
+                }`}
+              >
+                <Icon size={15} strokeWidth={on ? 2.2 : 1.9} />
+                {item.label}
+                {item.badge && unack > 0 && (
+                  <span className="mono inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
+                    {unack}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up" key={screen}>
             {screen === "dashboard" && (

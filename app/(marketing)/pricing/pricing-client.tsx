@@ -25,10 +25,11 @@ const PRO_FEATURES = [
 export function PricingClient() {
   const [annual, setAnnual] = useState(false);
 
-  const monthlyPerDev = 19;
-  const annualPerDevPerMonth = 190 / 12; // $15.83
-  const perDev = annual ? annualPerDevPerMonth : monthlyPerDev;
-  const minimum = annual ? 990 : 99; // 6 devs floor
+  // Whole-number display: $19/dev/mo or $190/dev/yr (≈17% off).
+  const perDev = annual ? 190 : 19;
+  const unit = annual ? "/dev/yr" : "/dev/mo";
+  const minimum = annual ? 990 : 99; // $99/mo floor, ~17% off annually
+  const minUnit = annual ? "/yr" : "/mo";
 
   return (
     <div className="mt-12">
@@ -97,12 +98,12 @@ export function PricingClient() {
         <div className="rounded-xl border-2 border-brand bg-paper p-8 shadow-sm">
           <h3 className="text-lg font-medium text-ink">Pro</h3>
           <p className="mt-4 text-4xl font-semibold text-ink">
-            ${perDev.toFixed(annual ? 2 : 0)}
-            <span className="text-base font-normal text-ink-3">/dev/mo</span>
+            ${perDev}
+            <span className="text-base font-normal text-ink-3">{unit}</span>
           </p>
           <p className="mt-1 text-sm text-ink-3">
-            ${minimum}/{annual ? "yr" : "mo"} minimum
-            {annual ? " · billed annually" : ""}
+            ${minimum}
+            {minUnit} minimum{annual ? " · billed annually" : ""}
           </p>
           <ul className="mt-6 space-y-3">
             {PRO_FEATURES.map((f) => (

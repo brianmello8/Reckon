@@ -44,8 +44,8 @@ export function HeroMock() {
         <span className="h-2.5 w-2.5 rounded-full bg-[#5bb87a]" />
         <span className="mono ml-3 text-[11.5px] text-ink-3">getreckon.dev/dashboard</span>
       </div>
-      <div className="p-5">
-        <div className="grid grid-cols-3 gap-3">
+      <div className="p-4 sm:p-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile label="Total spend · 30d" value={fmtMoney(total, 0)} delta={0.16} />
           <StatTile label="Developers" value={MOCK.dashboard.stats.activeDevelopers} />
           <StatTile label="Open anomalies" value={MOCK.recentAnomalies.length} sub="needs review" />
