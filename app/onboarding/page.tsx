@@ -45,7 +45,9 @@ export default function OnboardingPage() {
 
       // Create the org client-side (Frontend API) so it becomes the
       // ACTIVE organization on the session — server components then see auth().orgId.
-      const org = await createOrganization({ name: orgName, slug: orgSlug });
+      // NB: don't pass `slug` — the Clerk instance doesn't have org slugs enabled,
+      // and our own DB owns the slug anyway (mirrored below from `orgSlug`).
+      const org = await createOrganization({ name: orgName });
       await setActive({ organization: org.id });
 
       // Mirror into our DB synchronously so /dashboard doesn't race the webhook.
