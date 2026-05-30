@@ -5,6 +5,7 @@ import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { createHmac, randomBytes } from "crypto";
 import { cookies } from "next/headers";
+import { PLAN_LIMITS } from "@/lib/plans/limits";
 
 const LINEAR_CLIENT_ID = process.env.LINEAR_OAUTH_CLIENT_ID!;
 const STATE_SECRET = process.env.SLACK_SIGNING_SECRET!; // Reuse signing secret for state HMAC
@@ -24,13 +25,21 @@ export async function GET() {
   }
 
   const [org] = await db
-    .select({ id: organizations.id })
+    .select({ id: organizations.id, plan: organizations.plan })
     .from(organizations)
     .where(eq(organizations.clerkOrgId, clerkOrgId))
     .limit(1);
 
   if (!org) {
     return NextResponse.json({ error: "Org not found" }, { status: 404 });
+  }
+
+  // Linear is a Pro feature. Gate it server-side so the OAuth flow can't be
+  // started by a Free org even if they reach this URL directly.
+  if (!PLAN_LIMITS[org.plan ?? "free"].linearIntegration) {
+    return NextResponse.redirect(
+      new URL("/integrations?error=linear_pro_only", process.env.NEXT_PUBLIC_APP_URL)
+    );
   }
 
   const nonce = randomBytes(16).toString("hex");

@@ -4,12 +4,14 @@ export const PLAN_LIMITS = {
     maxProviders: 1,
     retentionDays: 30,
     weeklyDigest: false,
+    linearIntegration: false,
   },
   pro: {
     maxDevelopers: Infinity,
     maxProviders: Infinity,
     retentionDays: 365,
     weeklyDigest: true,
+    linearIntegration: true,
   },
 } as const;
 

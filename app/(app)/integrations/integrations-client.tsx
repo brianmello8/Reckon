@@ -14,6 +14,7 @@ import {
   setDigestChannel,
   disconnectLinear,
   getLinearTeams,
+  getLinearWorkspaceName,
   setLinearTeam,
 } from "./actions";
 
@@ -29,7 +30,16 @@ type LinearInstall = {
   installedAt: Date;
 } | null;
 
-export function IntegrationsClient({ slack, linear }: { slack: SlackInstall; linear: LinearInstall }) {
+export function IntegrationsClient({
+  slack,
+  linear,
+  plan,
+}: {
+  slack: SlackInstall;
+  linear: LinearInstall;
+  plan: "free" | "pro";
+}) {
+  const linearLocked = plan !== "pro";
   const searchParams = useSearchParams();
   const [disconnectPending, startDisconnect] = useTransition();
   const [testPending, startTest] = useTransition();
@@ -38,13 +48,17 @@ export function IntegrationsClient({ slack, linear }: { slack: SlackInstall; lin
   const [linearDisconnectPending, startLinearDisconnect] = useTransition();
   const [linearTeams, setLinearTeams] = useState<Array<{ id: string; name: string }>>([]);
   const [linearTeamPending, startLinearTeam] = useTransition();
+  const [linearWorkspaceName, setLinearWorkspaceName] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get("success") === "slack") {
       toast.success("Slack connected successfully");
     }
-    if (searchParams.get("error")) {
-      toast.error(`Slack error: ${searchParams.get("error")}`);
+    const err = searchParams.get("error");
+    if (err === "linear_pro_only") {
+      toast.error("Linear is a Pro feature. Upgrade to connect it.");
+    } else if (err) {
+      toast.error(`Slack error: ${err}`);
     }
   }, [searchParams]);
 
@@ -57,6 +71,7 @@ export function IntegrationsClient({ slack, linear }: { slack: SlackInstall; lin
   useEffect(() => {
     if (linear) {
       getLinearTeams().then(setLinearTeams).catch(() => {});
+      getLinearWorkspaceName().then(setLinearWorkspaceName).catch(() => {});
     }
   }, [linear]);
 
@@ -181,17 +196,56 @@ export function IntegrationsClient({ slack, linear }: { slack: SlackInstall; lin
             <GitPullRequest className="h-5 w-5 text-zinc-700" />
             <CardTitle>Linear</CardTitle>
           </div>
-          {linear ? (
+          {linearLocked ? (
+            <Badge variant="secondary">Pro</Badge>
+          ) : linear ? (
             <Badge>Connected</Badge>
           ) : (
             <Badge variant="secondary">Not connected</Badge>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {linear ? (
+          {linearLocked ? (
             <>
               <p className="text-sm text-zinc-600">
-                Connected to workspace <span className="font-mono">{linear.workspaceId}</span>
+                Auto-file a Linear issue for every critical anomaly. Available on
+                the Pro plan.
+              </p>
+              <a
+                href="/billing"
+                className="inline-flex h-8 items-center justify-center rounded-md bg-brand px-3 text-sm font-medium text-white hover:opacity-90"
+              >
+                Upgrade to Pro
+              </a>
+              {linear && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    startLinearDisconnect(async () => {
+                      try {
+                        await disconnectLinear();
+                        toast.success("Linear disconnected");
+                      } catch (err) {
+                        toast.error(
+                          err instanceof Error ? err.message : "Failed"
+                        );
+                      }
+                    });
+                  }}
+                  disabled={linearDisconnectPending}
+                  className="ml-3 text-sm text-zinc-500 hover:text-zinc-700"
+                >
+                  Disconnect
+                </button>
+              )}
+            </>
+          ) : linear ? (
+            <>
+              <p className="text-sm text-zinc-600">
+                Connected to{" "}
+                <span className="font-medium text-zinc-900">
+                  {linearWorkspaceName ?? "your Linear workspace"}
+                </span>
               </p>
 
               {linearTeams.length > 0 && (

@@ -11,7 +11,11 @@ export default async function IntegrationsPage() {
         title="Integrations"
         sub="Route digests and anomaly alerts to Slack and Linear."
       />
-      <IntegrationsClient slack={data.slack} linear={data.linear} />
+      <IntegrationsClient
+        slack={data.slack}
+        linear={data.linear}
+        plan={data.plan}
+      />
     </div>
   );
 }

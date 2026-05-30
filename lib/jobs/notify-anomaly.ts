@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { format } from "date-fns";
 import { getSlackClient } from "@/lib/slack/client";
 import { buildAnomalyBlocks } from "@/lib/slack/messages/anomaly";
+import { PLAN_LIMITS } from "@/lib/plans/limits";
 
 export const notifyAnomaly = inngest.createFunction(
   {
@@ -131,11 +132,19 @@ export const notifyAnomaly = inngest.createFunction(
       await step.run("create-linear-issue", async () => {
         try {
           const [org] = await db
-            .select({ linearTeamId: organizations.linearTeamId })
+            .select({
+              linearTeamId: organizations.linearTeamId,
+              plan: organizations.plan,
+            })
             .from(organizations)
             .where(eq(organizations.id, data.anomaly.orgId))
             .limit(1);
 
+          // Linear is Pro-only — never file issues for Free orgs, even if a
+          // stale connection + team exist from before the plan changed.
+          if (!PLAN_LIMITS[org?.plan ?? "free"].linearIntegration) {
+            return { created: false, reason: "free_plan" };
+          }
           if (!org?.linearTeamId) return { created: false, reason: "no_team" };
 
           const { getLinearClient } = await import("@/lib/linear/client");

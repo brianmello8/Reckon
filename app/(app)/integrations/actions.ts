@@ -11,11 +11,17 @@ import { withOrgContext } from "@/lib/db/rls";
 
 export async function getIntegrationsData() {
   const user = await requireUser();
-  const [slack, linear] = await Promise.all([
+  const [slack, linear, orgRow] = await Promise.all([
     getSlackInstallation(user.orgId),
     getLinearInstallation(user.orgId),
+    db
+      .select({ plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, user.orgId))
+      .limit(1),
   ]);
-  return { slack, linear };
+  const plan = orgRow[0]?.plan ?? "free";
+  return { slack, linear, plan };
 }
 
 export async function disconnectSlack() {
@@ -127,6 +133,19 @@ export async function getLinearTeams() {
 
   const teams = await client.teams();
   return teams.nodes.map((t) => ({ id: t.id, name: t.name }));
+}
+
+/** Human-readable Linear workspace name (we only persist the workspace UUID). */
+export async function getLinearWorkspaceName(): Promise<string | null> {
+  const user = await requireUser();
+  const client = await getLinearClient(user.orgId);
+  if (!client) return null;
+  try {
+    const org = await client.organization;
+    return org?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function setLinearTeam(teamId: string) {
