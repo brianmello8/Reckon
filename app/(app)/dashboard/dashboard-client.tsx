@@ -303,8 +303,19 @@ export function DashboardClient({
         </div>
         <div className="mt-4">
           {isEmpty ? (
-            <div className="flex h-64 items-center justify-center text-[13.5px] text-ink-3">
-              No usage data yet. Add provider keys and run ingestion.
+            <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+              <p className="text-[13.5px] text-ink-3">
+                No usage data yet. Add a developer and connect their provider keys
+                to start tracking spend.
+              </p>
+              {!demo && (
+                <Link
+                  href="/developers"
+                  className="inline-flex h-9 items-center rounded-lg bg-brand px-4 text-[13px] font-medium text-white hover:opacity-90"
+                >
+                  Add your first developer
+                </Link>
+              )}
             </div>
           ) : (
             <AreaChart

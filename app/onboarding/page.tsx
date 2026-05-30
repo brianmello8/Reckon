@@ -11,7 +11,8 @@ const STEPS = ["Workspace", "Connect key", "Invite team", "Done"];
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { createOrganization, setActive, isLoaded } = useOrganizationList();
+  const { createOrganization, setActive, isLoaded, userMemberships } =
+    useOrganizationList({ userMemberships: true });
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -43,21 +44,30 @@ export default function OnboardingPage() {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "") || `team-${Date.now()}`;
 
+      // Reuse an org the user already belongs to (e.g. from a previous failed
+      // attempt) instead of creating a duplicate Clerk org — duplicates collide
+      // on our UNIQUE slug and strand the session on an org with no DB row.
+      const existing = userMemberships?.data?.[0]?.organization;
+
       // Create the org client-side (Frontend API) so it becomes the
       // ACTIVE organization on the session — server components then see auth().orgId.
       // NB: don't pass `slug` — the Clerk instance doesn't have org slugs enabled,
       // and our own DB owns the slug anyway (mirrored below from `orgSlug`).
-      const org = await createOrganization({ name: orgName });
+      const org = existing ?? (await createOrganization({ name: orgName }));
       await setActive({ organization: org.id });
 
       // Mirror into our DB synchronously so /dashboard doesn't race the webhook.
       await ensureOrgRow({
         clerkOrgId: org.id,
-        name: orgName,
+        name: org.name || orgName,
         slug: org.slug ?? orgSlug,
       });
 
-      router.push("/dashboard");
+      // Hard navigation (not router.push): forces a fresh request carrying the
+      // just-updated active-org session cookie, so the server sees auth().orgId
+      // immediately instead of bouncing back to /onboarding.
+      window.location.assign("/dashboard");
+      return;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setPending(false);

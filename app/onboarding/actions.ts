@@ -27,25 +27,48 @@ export async function ensureOrgRow(input: {
 
   const parsed = ensureOrgSchema.parse(input);
 
-  const [org] = await db
-    .insert(organizations)
-    .values({
-      clerkOrgId: parsed.clerkOrgId,
-      name: parsed.name,
-      slug: parsed.slug,
-    })
-    .onConflictDoNothing()
-    .returning();
+  // Idempotent: if we already have a row for this Clerk org, use it. This is the
+  // common path on retries/back-navigation and avoids any slug churn.
+  let orgRow = (
+    await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.clerkOrgId, parsed.clerkOrgId))
+      .limit(1)
+  )[0];
 
-  const orgRow =
-    org ??
-    (
-      await db
-        .select()
-        .from(organizations)
-        .where(eq(organizations.clerkOrgId, parsed.clerkOrgId))
-        .limit(1)
-    )[0];
+  if (!orgRow) {
+    // `slug` is UNIQUE. A retry can create a second Clerk org with the same name
+    // (→ same slug) — find a free slug instead of throwing on the collision.
+    let slug = parsed.slug;
+    for (let i = 0; i < 6; i++) {
+      const taken = (
+        await db
+          .select({ id: organizations.id })
+          .from(organizations)
+          .where(eq(organizations.slug, slug))
+          .limit(1)
+      )[0];
+      if (!taken) break;
+      slug = `${parsed.slug}-${Math.random().toString(36).slice(2, 6)}`;
+    }
+
+    orgRow =
+      (
+        await db
+          .insert(organizations)
+          .values({ clerkOrgId: parsed.clerkOrgId, name: parsed.name, slug })
+          .onConflictDoNothing({ target: organizations.clerkOrgId })
+          .returning()
+      )[0] ??
+      (
+        await db
+          .select()
+          .from(organizations)
+          .where(eq(organizations.clerkOrgId, parsed.clerkOrgId))
+          .limit(1)
+      )[0];
+  }
 
   if (!orgRow) throw new Error("Failed to create organization");
 
