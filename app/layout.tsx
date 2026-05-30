@@ -1,4 +1,5 @@
 import { ClerkProvider } from "@clerk/nextjs";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { themeInitScript } from "@/components/reckon/theme-toggle";
@@ -91,6 +92,7 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <ClerkProvider>{children}</ClerkProvider>
       </body>
+      <GoogleAnalytics gaId="G-MGZ8BRJ2ZB" />
     </html>
   );
 }
