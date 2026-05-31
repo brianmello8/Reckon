@@ -19,12 +19,14 @@ We never sit in the customer's request path to AI providers. We never see prompt
 - **Why:** Keeps us off the critical path (no uptime SLA pressure, no latency budget), eliminates the largest security-review category, and lets a small team operate the service. Tradeoff is shallower data — accepted.
 - **Rules out:** Building a proxy, terminating TLS for customer traffic, semantic caching, response routing, prompt rewriting, anything that requires being in-band.
 
-### 2. Per-developer attribution via per-developer API keys
+### 2. Per-developer attribution via one org admin key per provider
 
-Each developer at a customer org has their own Anthropic / OpenAI / GitHub API key, tagged with their identity in our system. We poll usage at the key level and join through to developer identity.
+The customer connects **one org-level admin/usage key per provider**. We poll the provider's usage API, which reports the whole org's usage **broken down per provider-side identity** (Anthropic `api_key_id`, OpenAI `user_id`, GitHub Copilot seat login). Each identity is recorded in `provider_identities` and mapped to a developer (auto-created for human labels, else assigned in the UI). `usage_events.developer_id` is denormalized from that mapping at ingest and re-resolved on reassignment.
 
-- **Why:** Provider usage APIs already report at the key level. No proxy needed. Works with any AI tool the developer uses (Claude Code, Cursor, custom apps), because all of them honor the API key they're given.
-- **Rules out:** Shared org-wide API keys with metadata tagging (requires a proxy). Per-project or per-repo attribution (we're per-person only in v1).
+- **Why:** Only org-admin keys can read usage on these providers, and those endpoints report org-wide — so collecting a key per developer doesn't actually work and misattributes the whole org's spend to one person. One key per provider is also far less setup friction. Still no proxy: we only read what the provider already reports.
+- **Superseded:** the original "each developer pastes their own key" model (it was structurally broken — see git history around the attribution rework).
+- **Rules out:** Being in the request path / proxy (decision #1). Per-project or per-repo attribution (we're per-person only in v1).
+- **Constraint:** requires provider org-admin access (Anthropic Team/Enterprise Admin key, OpenAI org admin key, GitHub org admin). Accounts without admin access can't be tracked — surfaced in the UI.
 
 ### 3. Multi-tenant with structural isolation
 
@@ -40,7 +42,7 @@ Envelope encryption. Data keys stored encrypted in the row, master key in the pl
 
 ### 5. Idempotent ingestion
 
-Every `usage_events` row has a composite natural key (`provider_key_id`, `time_bucket`, `model`). Ingestion is `ON CONFLICT DO NOTHING` or `DO UPDATE` with last-write-wins on numeric fields. Workers can re-run, be killed mid-flight, or process the same window twice without corruption.
+Every `usage_events` row has a composite natural key (`provider_key_id`, `external_identity`, `time_bucket`, `model`). Ingestion is `ON CONFLICT DO NOTHING` or `DO UPDATE` with last-write-wins on numeric fields. Workers can re-run, be killed mid-flight, or process the same window twice without corruption.
 
 - **Why:** Provider APIs revise past numbers, jobs get retried, manual reprocessing happens. Idempotency is the only sane invariant.
 
