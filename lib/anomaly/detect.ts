@@ -40,7 +40,8 @@ export async function detectAnomaliesForOrg(
   // Find all (developer, provider) pairs with usage in this org
   const devProviderPairs = await db
     .select({
-      developerId: usageEvents.developerId,
+      // developers.id is non-null via the inner join (usageEvents.developerId is nullable).
+      developerId: developers.id,
       providerId: usageEvents.providerId,
       developerName: developers.displayName,
       providerKey: providers.key,
@@ -52,7 +53,7 @@ export async function detectAnomaliesForOrg(
       and(eq(usageEvents.orgId, orgId), isNull(developers.deletedAt))
     )
     .groupBy(
-      usageEvents.developerId,
+      developers.id,
       usageEvents.providerId,
       developers.displayName,
       providers.key

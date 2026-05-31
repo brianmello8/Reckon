@@ -57,6 +57,13 @@
       "when": 1779983563578,
       "tag": "0007_smiling_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780239388278,
+      "tag": "0008_outgoing_thor_girl",
+      "breakpoints": true
     }
   ]
 }

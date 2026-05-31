@@ -30,7 +30,9 @@ export const openaiClient: ProviderClient = {
       const url = new URL("https://api.openai.com/v1/organization/usage/completions");
       url.searchParams.set("start_time", startTime.toString());
       url.searchParams.set("end_time", endTime.toString());
-      url.searchParams.set("group_by", "model");
+      // Break usage down per user so we can attribute to developers.
+      url.searchParams.append("group_by", "model");
+      url.searchParams.append("group_by", "user_id");
       url.searchParams.set("bucket_width", "1d");
       if (page) url.searchParams.set("page", page);
 
@@ -48,6 +50,8 @@ export const openaiClient: ProviderClient = {
           end_time?: number;
           results?: Array<{
             model?: string;
+            user_id?: string;
+            api_key_id?: string;
             input_tokens?: number;
             output_tokens?: number;
             input_cached_tokens?: number;
@@ -66,6 +70,7 @@ export const openaiClient: ProviderClient = {
 
           for (const result of bucket.results) {
             const model = result.model ?? "unknown";
+            const externalIdentity = result.user_id ?? result.api_key_id ?? "";
             const inputTokens = result.input_tokens ?? 0;
             const outputTokens = result.output_tokens ?? 0;
             const cachedInputTokens = result.input_cached_tokens ?? 0;
@@ -73,6 +78,7 @@ export const openaiClient: ProviderClient = {
             allRows.push({
               time_bucket: bucketDate,
               model,
+              external_identity: externalIdentity,
               input_tokens: inputTokens,
               output_tokens: outputTokens,
               cached_input_tokens: cachedInputTokens,
@@ -95,7 +101,7 @@ function mergeRows(rows: UsageRow[]): UsageRow[] {
   const map = new Map<string, UsageRow>();
 
   for (const row of rows) {
-    const key = `${row.time_bucket}:${row.model}`;
+    const key = `${row.time_bucket}:${row.model}:${row.external_identity}`;
     const existing = map.get(key);
     if (existing) {
       existing.input_tokens += row.input_tokens;

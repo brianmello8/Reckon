@@ -47,7 +47,7 @@ export async function getDailyTotalsByDeveloper(
   return withOrgContext(orgId, async (tx) => {
     return tx
       .select({
-        developerId: usageEvents.developerId,
+        developerId: developers.id,
         developerName: developers.displayName,
         date: usageEvents.timeBucket,
         cost: sql<bigint>`sum(${usageEvents.costUsdMicros})`.as("cost"),
@@ -61,7 +61,7 @@ export async function getDailyTotalsByDeveloper(
           isNull(developers.deletedAt)
         )
       )
-      .groupBy(usageEvents.developerId, developers.displayName, usageEvents.timeBucket)
+      .groupBy(developers.id, developers.displayName, usageEvents.timeBucket)
       .orderBy(usageEvents.timeBucket);
   });
 }
@@ -134,7 +134,7 @@ export async function getDeveloperRanking(
     // Get per-developer totals for the range
     const devTotals = await tx
       .select({
-        developerId: usageEvents.developerId,
+        developerId: developers.id,
         developerName: developers.displayName,
         totalCost: sql<bigint>`sum(${usageEvents.costUsdMicros})`.as("total_cost"),
         keyCount: sql<number>`count(distinct ${usageEvents.providerKeyId})`.as(
@@ -150,7 +150,7 @@ export async function getDeveloperRanking(
           isNull(developers.deletedAt)
         )
       )
-      .groupBy(usageEvents.developerId, developers.displayName)
+      .groupBy(developers.id, developers.displayName)
       .orderBy(desc(sql`sum(${usageEvents.costUsdMicros})`));
 
     // Calculate org total for percentages

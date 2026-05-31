@@ -106,7 +106,8 @@ export async function getDashboardData(orgId: string, from: string, to: string) 
     // Developer ranking table
     const devRanking = await tx
       .select({
-        developerId: usageEvents.developerId,
+        // developers.id is non-null (inner join); usageEvents.developerId is now nullable.
+        developerId: developers.id,
         name: developers.displayName,
         totalCost: sql<bigint>`sum(${usageEvents.costUsdMicros})`.as("total_cost"),
         keyCount: sql<number>`count(distinct ${usageEvents.providerKeyId})`.as("key_count"),
@@ -120,7 +121,7 @@ export async function getDashboardData(orgId: string, from: string, to: string) 
           isNull(developers.deletedAt)
         )
       )
-      .groupBy(usageEvents.developerId, developers.displayName)
+      .groupBy(developers.id, developers.displayName)
       .orderBy(desc(sql`sum(${usageEvents.costUsdMicros})`));
 
     const totalCost = BigInt(totals?.totalCost ?? 0);

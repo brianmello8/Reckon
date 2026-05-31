@@ -4,6 +4,7 @@ import { providerKeys, providers, usageEvents } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { decryptSecret } from "@/lib/encryption/envelope";
 import { getProviderClient } from "@/lib/providers/registry";
+import { resolveDeveloperForIdentity } from "@/lib/providers/identities";
 import { ProviderAuthError, ProviderTransientError } from "@/lib/providers/errors";
 import { subHours, subDays, addDays, parseISO, differenceInDays, min } from "date-fns";
 import type { UsageRow } from "@/lib/providers/types";
@@ -143,19 +144,37 @@ export const ingestProviderKey = inngest.createFunction(
 
 async function upsertRows(
   rows: UsageRow[],
-  keyRow: { id: string; orgId: string; providerId: string; developerId: string }
+  keyRow: { id: string; orgId: string; providerId: string; developerId: string | null }
 ): Promise<number> {
   if (rows.length === 0) return 0;
 
+  // Resolve each distinct provider identity to a developer once per chunk
+  // (upserts provider_identities + auto-creates developers where labelled).
+  const identityToDev = new Map<string, string | null>();
+  for (const row of rows) {
+    if (identityToDev.has(row.external_identity)) continue;
+    const developerId = row.external_identity
+      ? await resolveDeveloperForIdentity({
+          orgId: keyRow.orgId,
+          providerId: keyRow.providerId,
+          externalId: row.external_identity,
+          label: row.identity_label,
+        })
+      : keyRow.developerId; // legacy/aggregate rows fall back to the key's owner
+    identityToDev.set(row.external_identity, developerId ?? null);
+  }
+
   let count = 0;
   for (const row of rows) {
+    const developerId = identityToDev.get(row.external_identity) ?? null;
     await db
       .insert(usageEvents)
       .values({
         orgId: keyRow.orgId,
         providerKeyId: keyRow.id,
         providerId: keyRow.providerId,
-        developerId: keyRow.developerId,
+        developerId,
+        externalIdentity: row.external_identity,
         timeBucket: row.time_bucket,
         model: row.model,
         inputTokens: BigInt(row.input_tokens),
@@ -167,10 +186,12 @@ async function upsertRows(
       .onConflictDoUpdate({
         target: [
           usageEvents.providerKeyId,
+          usageEvents.externalIdentity,
           usageEvents.timeBucket,
           usageEvents.model,
         ],
         set: {
+          developerId,
           inputTokens: BigInt(row.input_tokens),
           outputTokens: BigInt(row.output_tokens),
           cachedInputTokens: BigInt(row.cached_input_tokens),

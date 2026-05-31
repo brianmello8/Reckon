@@ -117,9 +117,9 @@ export const providerKeys = pgTable("provider_keys", {
   orgId: uuid("org_id")
     .notNull()
     .references(() => organizations.id),
-  developerId: uuid("developer_id")
-    .notNull()
-    .references(() => developers.id),
+  // Nullable: an org-wide admin key is not tied to a single developer.
+  // (Legacy per-developer keys may still reference one.)
+  developerId: uuid("developer_id").references(() => developers.id),
   providerId: uuid("provider_id")
     .notNull()
     .references(() => providers.id),
@@ -139,6 +139,39 @@ export const providerKeys = pgTable("provider_keys", {
     .defaultNow(),
 });
 
+// A distinct usage-producing identity reported by a provider under an org's
+// admin key — Anthropic api_key_id, OpenAI user_id, GitHub Copilot seat login.
+// We map each to one of our developers (nullable = not yet assigned).
+export const providerIdentities = pgTable(
+  "provider_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    externalId: text("external_id").notNull(),
+    label: text("label"),
+    developerId: uuid("developer_id").references(() => developers.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_provider_identities_natural").on(
+      t.orgId,
+      t.providerId,
+      t.externalId
+    ),
+    index("idx_provider_identities_developer").on(t.developerId),
+  ]
+);
+
 export const usageEvents = pgTable(
   "usage_events",
   {
@@ -152,9 +185,11 @@ export const usageEvents = pgTable(
     providerId: uuid("provider_id")
       .notNull()
       .references(() => providers.id),
-    developerId: uuid("developer_id")
-      .notNull()
-      .references(() => developers.id),
+    // Resolved from provider_identities at ingest; nullable = unassigned.
+    developerId: uuid("developer_id").references(() => developers.id),
+    // Provider-side identity (api_key_id / user_id / seat login). Empty string
+    // for legacy/aggregate rows so the natural key stays reliable (no NULLs).
+    externalIdentity: text("external_identity").notNull().default(""),
     timeBucket: date("time_bucket").notNull(),
     model: text("model").notNull(),
     inputTokens: bigint("input_tokens", { mode: "bigint" })
@@ -180,6 +215,7 @@ export const usageEvents = pgTable(
   (t) => [
     uniqueIndex("uniq_usage_events_natural_key").on(
       t.providerKeyId,
+      t.externalIdentity,
       t.timeBucket,
       t.model
     ),
