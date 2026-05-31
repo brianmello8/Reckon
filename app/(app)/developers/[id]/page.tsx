@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getDeveloperDetail, getProvidersList } from "./actions";
+import { getDeveloperDetail } from "./actions";
 import { DeveloperDetail } from "./developer-detail";
 
 export default async function DeveloperDetailPage({
@@ -8,18 +8,9 @@ export default async function DeveloperDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [data, providersList] = await Promise.all([
-    getDeveloperDetail(id),
-    getProvidersList(),
-  ]);
+  const data = await getDeveloperDetail(id);
 
   if (!data) notFound();
 
-  return (
-    <DeveloperDetail
-      developer={data.developer}
-      keys={data.keys}
-      providers={providersList}
-    />
-  );
+  return <DeveloperDetail developer={data.developer} keys={data.keys} />;
 }
