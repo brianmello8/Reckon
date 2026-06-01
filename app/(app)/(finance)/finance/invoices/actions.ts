@@ -25,7 +25,7 @@ export async function getInvoices() {
 
 export async function getInvoiceLineItems(invoiceId: string) {
   const user = await requireSurface("finance");
-  return withOrgContext(user.orgId, async (tx) =>
+  const rows = await withOrgContext(user.orgId, async (tx) =>
     tx
       .select()
       .from(invoiceLineItems)
@@ -36,6 +36,16 @@ export async function getInvoiceLineItems(invoiceId: string) {
         )
       )
   );
+  // Stringify bigint columns — a server action's return is serialized to the
+  // client, and BigInt is not serializable across that boundary.
+  return rows.map((r) => ({
+    id: r.id,
+    description: r.description,
+    model: r.model,
+    quantity: r.quantity != null ? r.quantity.toString() : null,
+    unit: r.unit,
+    amount: r.amount.toString(),
+  }));
 }
 
 const lineSchema = z.object({
