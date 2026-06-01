@@ -14,6 +14,9 @@ import {
   deleteRule,
   codeGroup,
   recomputeAllocationsAction,
+  saveDriver,
+  setDriverStatus,
+  setRoundingCostCenter,
 } from "./actions";
 
 type Opt = { id: string; label: string };
@@ -35,11 +38,22 @@ type Group = {
   eventIds: string[];
 };
 
+type Driver = {
+  id: string;
+  name: string;
+  method: string;
+  config: string;
+  status: "active" | "archived";
+};
+
 type Props = {
   rules: Rule[];
   needsCoding: Group[];
   providers: { key: string; name: string }[];
   agents: { id: string; name: string }[];
+  ruleDrivers: { id: string; name: string; method: string }[];
+  drivers: Driver[];
+  roundingCostCenterId: string | null;
   glAccounts: GlOpt[];
   costCenters: Opt[];
   entities: Opt[];
@@ -50,11 +64,16 @@ type Props = {
 const money = (m: number) => fmtMoney(microsToDollars(m));
 
 export function CodingClient(props: Props) {
-  const [tab, setTab] = React.useState<"rules" | "queue">("rules");
+  const [tab, setTab] = React.useState<"rules" | "queue" | "drivers">("rules");
+  const label = {
+    rules: "Rules",
+    queue: `Needs coding${props.needsCoding.length ? ` (${props.needsCoding.length})` : ""}`,
+    drivers: "Drivers",
+  };
   return (
     <div className="space-y-4">
       <div className="flex gap-1">
-        {(["rules", "queue"] as const).map((t) => (
+        {(["rules", "queue", "drivers"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -62,11 +81,13 @@ export function CodingClient(props: Props) {
               tab === t ? "bg-ink text-paper" : "text-ink-3 hover:bg-bg-2 hover:text-ink"
             }`}
           >
-            {t === "rules" ? "Rules" : `Needs coding${props.needsCoding.length ? ` (${props.needsCoding.length})` : ""}`}
+            {label[t]}
           </button>
         ))}
       </div>
-      {tab === "rules" ? <RulesTab {...props} /> : <QueueTab {...props} />}
+      {tab === "rules" && <RulesTab {...props} />}
+      {tab === "queue" && <QueueTab {...props} />}
+      {tab === "drivers" && <DriversTab {...props} />}
     </div>
   );
 }
@@ -139,6 +160,8 @@ function RulesTab(props: Props) {
             options={[{ id: "", label: "—" }, ...props.glAccounts]} />
           <Select name="cost_center_id" label="Cost center" defaultValue={editing?.assign.cost_center_id}
             options={[{ id: "", label: "—" }, ...props.costCenters]} />
+          <Select name="allocation_driver_id" label="Driver (shared split)" defaultValue={editing?.assign.allocation_driver_id}
+            options={[{ id: "", label: "— direct —" }, ...props.ruleDrivers.map((d) => ({ id: d.id, label: `${d.name} (${d.method})` }))]} />
           <Select name="entity_id" label="Entity" defaultValue={editing?.assign.entity_id}
             options={[{ id: "", label: "—" }, ...props.entities]} />
           <Select name="project_id" label="Project" defaultValue={editing?.assign.project_id}
@@ -319,6 +342,166 @@ function QueueTab(props: Props) {
                     </tr>
                   )}
                 </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const METHOD_HELP: Record<string, string> = {
+  even: '{ "cost_center_ids": ["<id>", "<id>"] }',
+  fixed_pct: '{ "weights": { "<ccId>": 6000, "<ccId>": 4000 } }  // basis points',
+  usage_tokens: '{ "cost_center_ids": ["<id>"] }  // optional; default = all cost centers with usage',
+  headcount: '{ "values": { "<ccId>": 12, "<ccId>": 8 } }  // headcount you supply',
+  revenue: '{ "values": { "<ccId>": 500000, "<ccId>": 300000 } }  // revenue you supply',
+};
+const METHODS = ["usage_tokens", "even", "fixed_pct", "headcount", "revenue"];
+
+function DriverForm({
+  editing,
+  costCenters,
+  onDone,
+}: {
+  editing: Driver | null;
+  costCenters: Opt[];
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [method, setMethod] = React.useState<string>(editing?.method ?? "usage_tokens");
+  const [pending, setPending] = React.useState(false);
+
+  async function submit(formData: FormData) {
+    setPending(true);
+    try {
+      const raw = Object.fromEntries(formData.entries()) as Record<string, string>;
+      await saveDriver(raw);
+      toast.success(editing ? "Driver saved" : "Driver created");
+      onDone();
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form action={submit} className="space-y-3 rounded-xl border border-line bg-paper p-4">
+      {editing && <input type="hidden" name="id" value={editing.id} />}
+      <div className="flex flex-wrap items-end gap-3">
+        <L label="Name"><Input name="name" defaultValue={editing?.name} required className="w-48" /></L>
+        <L label="Method">
+          <select
+            name="method"
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+            className="h-9 w-44 rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {METHODS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </L>
+      </div>
+      <L label="Config (JSON)">
+        <textarea
+          name="config"
+          defaultValue={editing?.config ?? "{}"}
+          rows={4}
+          className="w-full rounded-md border border-input bg-transparent px-2 py-1.5 font-mono text-[12.5px] shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      </L>
+      <p className="font-mono text-[11.5px] text-ink-3">{METHOD_HELP[method]}</p>
+      <details className="text-[12px] text-ink-3">
+        <summary className="cursor-pointer">Cost center IDs</summary>
+        <ul className="mt-1 space-y-0.5">
+          {costCenters.map((c) => (
+            <li key={c.id}>
+              <span className="text-ink-2">{c.label}</span> — <span className="font-mono">{c.id}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>{pending ? "Saving…" : editing ? "Save driver" : "Add driver"}</Button>
+        {editing && <Button type="button" variant="ghost" onClick={onDone}>Cancel</Button>}
+      </div>
+    </form>
+  );
+}
+
+function DriversTab(props: Props) {
+  const router = useRouter();
+  const [editing, setEditing] = React.useState<Driver | null>(null);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-paper p-3">
+        <Select
+          name="rounding"
+          label="Rounding cost center (residual lands here)"
+          defaultValue={props.roundingCostCenterId ?? ""}
+          options={[{ id: "", label: "— largest remainder —" }, ...props.costCenters]}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            const sel = document.querySelector<HTMLSelectElement>('select[name="rounding"]');
+            await setRoundingCostCenter(sel?.value ?? "");
+            toast.success("Rounding cost center updated");
+            router.refresh();
+          }}
+        >
+          Save rounding
+        </Button>
+      </div>
+
+      <DriverForm
+        key={editing?.id ?? "new"}
+        editing={editing}
+        costCenters={props.costCenters}
+        onDone={() => setEditing(null)}
+      />
+
+      {props.drivers.length === 0 ? (
+        <p className="py-4 text-sm text-zinc-500">No drivers yet. Add one, then point a rule&apos;s &quot;Driver&quot; at it to split a shared key across cost centers.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-line bg-paper">
+          <table className="w-full text-sm">
+            <thead className="border-b border-line bg-bg-2 text-left text-[12px] text-ink-3">
+              <tr>
+                <th className="px-4 py-2 font-medium">Name</th>
+                <th className="px-4 py-2 font-medium">Method</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {props.drivers.map((d) => (
+                <tr key={d.id} className="border-b border-line last:border-0">
+                  <td className="px-4 py-2.5 text-ink">{d.name}</td>
+                  <td className="px-4 py-2.5 font-mono text-[12.5px] text-ink-2">{d.method}</td>
+                  <td className="px-4 py-2.5">
+                    <Badge variant={d.status === "active" ? "default" : "secondary"}>{d.status}</Badge>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(d)}>Edit</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        await setDriverStatus(d.id, d.status === "active" ? "archived" : "active");
+                        router.refresh();
+                      }}
+                    >
+                      {d.status === "active" ? "Archive" : "Restore"}
+                    </Button>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

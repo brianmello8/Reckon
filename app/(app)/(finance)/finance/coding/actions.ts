@@ -6,6 +6,8 @@ import {
   attributionRules,
   costAllocations,
   costAllocationOverrides,
+  allocationDrivers,
+  organizations,
   glAccounts,
   usageEvents,
   providers,
@@ -32,7 +34,14 @@ export async function getRuleOptions() {
       .where(eq(agents.orgId, user.orgId))
       .orderBy(agents.name)
   );
-  return { providers: providerRows, agents: agentRows };
+  const driverRows = await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .select({ id: allocationDrivers.id, name: allocationDrivers.name, method: allocationDrivers.method })
+      .from(allocationDrivers)
+      .where(and(eq(allocationDrivers.orgId, user.orgId), eq(allocationDrivers.status, "active")))
+      .orderBy(allocationDrivers.name)
+  );
+  return { providers: providerRows, agents: agentRows, drivers: driverRows };
 }
 
 export async function getRules() {
@@ -59,6 +68,7 @@ const ruleSchema = z.object({
   // assign
   gl_account_id: z.string().optional().or(z.literal("")),
   cost_center_id: z.string().optional().or(z.literal("")),
+  allocation_driver_id: z.string().optional().or(z.literal("")),
   entity_id: z.string().optional().or(z.literal("")),
   project_id: z.string().optional().or(z.literal("")),
   product_line_id: z.string().optional().or(z.literal("")),
@@ -91,7 +101,10 @@ export async function saveRule(
   });
   const assign = clean({
     gl_account_id: p.gl_account_id,
-    cost_center_id: p.cost_center_id,
+    // A direct cost center and a shared-cost driver both fill the cost-center
+    // slot; a driver wins if both are set (and we don't store the redundant CC).
+    cost_center_id: p.allocation_driver_id ? "" : p.cost_center_id,
+    allocation_driver_id: p.allocation_driver_id,
     entity_id: p.entity_id,
     project_id: p.project_id,
     product_line_id: p.product_line_id,
@@ -286,20 +299,26 @@ export async function codeGroup(input: {
           target: [costAllocationOverrides.orgId, costAllocationOverrides.usageEventId],
           set: { ...dims, createdByUserId: user.userId, updatedAt: new Date() },
         });
+      // cost_allocations allows multiple rows per event (splits), so we
+      // delete-then-insert this event's rows rather than upsert (clears any
+      // prior split/rule coding; the single override row replaces it).
       await tx
-        .insert(costAllocations)
-        .values({
-          orgId: user.orgId,
-          usageEventId: eventId,
-          ...dims,
-          codingStatus: "coded",
-          ruleId: null,
-          overridden: true,
-        })
-        .onConflictDoUpdate({
-          target: [costAllocations.orgId, costAllocations.usageEventId],
-          set: { ...dims, codingStatus: "coded", ruleId: null, overridden: true, computedAt: new Date() },
-        });
+        .delete(costAllocations)
+        .where(
+          and(
+            eq(costAllocations.orgId, user.orgId),
+            eq(costAllocations.usageEventId, eventId)
+          )
+        );
+      await tx.insert(costAllocations).values({
+        orgId: user.orgId,
+        usageEventId: eventId,
+        ...dims,
+        codingStatus: "coded",
+        allocationPct: 10000,
+        ruleId: null,
+        overridden: true,
+      });
     }
   });
 
@@ -310,5 +329,92 @@ export async function codeGroup(input: {
 export async function recomputeAllocationsAction() {
   const user = await requireSurface("finance");
   await inngest.send({ name: "allocation/recompute.requested", data: { org_id: user.orgId } });
+  return { success: true };
+}
+
+// --- Shared-cost drivers (Phase 9.3) ---
+
+export async function getDrivers() {
+  const user = await requireSurface("finance");
+  const [org] = await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .select({ rounding: organizations.roundingCostCenterId })
+      .from(organizations)
+      .where(eq(organizations.id, user.orgId))
+      .limit(1)
+  );
+  const drivers = await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .select()
+      .from(allocationDrivers)
+      .where(eq(allocationDrivers.orgId, user.orgId))
+      .orderBy(allocationDrivers.name)
+  );
+  return { drivers, roundingCostCenterId: org?.rounding ?? null };
+}
+
+const driverSchema = z.object({
+  id: z.string().uuid().optional().or(z.literal("")),
+  name: z.string().min(1).max(200),
+  method: z.enum(["usage_tokens", "headcount", "revenue", "fixed_pct", "even"]),
+  config: z.string(),
+});
+
+export async function saveDriver(raw: Record<string, string>) {
+  const user = await requireSurface("finance");
+  const p = driverSchema.parse(raw);
+  let config: unknown;
+  try {
+    config = p.config.trim() === "" ? {} : JSON.parse(p.config);
+  } catch {
+    throw new Error("Config must be valid JSON.");
+  }
+  if (typeof config !== "object" || config === null || Array.isArray(config)) {
+    throw new Error("Config must be a JSON object.");
+  }
+  const id = p.id && p.id !== "" ? p.id : null;
+
+  await withOrgContext(user.orgId, async (tx) => {
+    if (id) {
+      const upd = await tx
+        .update(allocationDrivers)
+        .set({ name: p.name, method: p.method, config, updatedAt: new Date() })
+        .where(and(eq(allocationDrivers.id, id), eq(allocationDrivers.orgId, user.orgId)))
+        .returning({ id: allocationDrivers.id });
+      if (upd.length === 0) throw new Error("Driver not found.");
+    } else {
+      await tx
+        .insert(allocationDrivers)
+        .values({ orgId: user.orgId, name: p.name, method: p.method, config });
+    }
+  });
+  await inngest.send({ name: "allocation/recompute.requested", data: { org_id: user.orgId } });
+  revalidatePath("/finance/coding");
+  return { success: true };
+}
+
+export async function setDriverStatus(id: string, status: "active" | "archived") {
+  const user = await requireSurface("finance");
+  await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .update(allocationDrivers)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(allocationDrivers.id, id), eq(allocationDrivers.orgId, user.orgId)))
+  );
+  await inngest.send({ name: "allocation/recompute.requested", data: { org_id: user.orgId } });
+  revalidatePath("/finance/coding");
+  return { success: true };
+}
+
+export async function setRoundingCostCenter(costCenterId: string) {
+  const user = await requireSurface("finance");
+  await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .update(organizations)
+      .set({ roundingCostCenterId: costCenterId || null, updatedAt: new Date() })
+      .where(eq(organizations.id, user.orgId))
+  );
+  await inngest.send({ name: "allocation/recompute.requested", data: { org_id: user.orgId } });
+  revalidatePath("/finance/coding");
   return { success: true };
 }

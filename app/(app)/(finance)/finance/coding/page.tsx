@@ -1,16 +1,17 @@
 import { PageHead } from "@/components/reckon/page-head";
 import { requireSurface } from "@/lib/auth";
-import { getRules, getNeedsCoding, getRuleOptions } from "./actions";
+import { getRules, getNeedsCoding, getRuleOptions, getDrivers } from "./actions";
 import { getDimensions } from "../dimensions/actions";
 import { CodingClient } from "./coding-client";
 
 export default async function CodingPage() {
   await requireSurface("finance");
-  const [rules, needsCoding, options, dims] = await Promise.all([
+  const [rules, needsCoding, options, dims, driverData] = await Promise.all([
     getRules(),
     getNeedsCoding(),
     getRuleOptions(),
     getDimensions(),
+    getDrivers(),
   ]);
 
   const active = <T extends { status: string }>(xs: T[]) =>
@@ -34,6 +35,15 @@ export default async function CodingPage() {
         needsCoding={needsCoding}
         providers={options.providers}
         agents={options.agents}
+        ruleDrivers={options.drivers}
+        drivers={driverData.drivers.map((d) => ({
+          id: d.id,
+          name: d.name,
+          method: d.method,
+          config: JSON.stringify(d.config ?? {}, null, 2),
+          status: d.status,
+        }))}
+        roundingCostCenterId={driverData.roundingCostCenterId}
         glAccounts={active(dims.glAccounts).map((g) => ({
           id: g.id,
           label: `${g.code} · ${g.name}`,

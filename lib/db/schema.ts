@@ -101,6 +101,13 @@ export const codingStatusEnum = pgEnum("coding_status", [
   "needs_coding",
   "suspense",
 ]);
+export const allocationDriverMethodEnum = pgEnum("allocation_driver_method", [
+  "usage_tokens",
+  "headcount",
+  "revenue",
+  "fixed_pct",
+  "even",
+]);
 
 // --- Tables ---
 
@@ -122,6 +129,9 @@ export const organizations = pgTable("organizations", {
   // Optional GL account that unmapped spend routes to (Phase 9.2). When unset,
   // unmapped spend lands in the needs-coding queue instead of a suspense code.
   suspenseGlAccountId: uuid("suspense_gl_account_id"),
+  // Optional cost center that shared-cost split rounding residual lands on
+  // (Phase 9.3). When unset, residual is distributed by largest-remainder.
+  roundingCostCenterId: uuid("rounding_cost_center_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -583,6 +593,31 @@ export const productLines = pgTable(
   (t) => [uniqueIndex("uniq_product_lines_org_code").on(t.orgId, t.code)]
 );
 
+// Driver for splitting shared spend across cost centers (Phase 9.3, §3f).
+export const allocationDrivers = pgTable(
+  "allocation_drivers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    method: allocationDriverMethodEnum("method").notNull(),
+    // config (jsonb): method-specific. usage_tokens/even → { cost_center_ids:[] };
+    // fixed_pct → { weights: { ccId: bps } }; headcount/revenue → { values: { ccId: n } }
+    // (customer-supplied external numbers — never fabricated).
+    config: jsonb("config").notNull().default({}),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_allocation_drivers_org").on(t.orgId)]
+);
+
 // --- Account determination & allocations (Phase 9.2, architecture §3e) ---
 
 // Ordered, overridable mapping from usage to finance dimensions. Lower priority
@@ -631,6 +666,9 @@ export const costAllocations = pgTable(
     projectId: uuid("project_id").references(() => projects.id),
     productLineId: uuid("product_line_id").references(() => productLines.id),
     codingStatus: codingStatusEnum("coding_status").notNull(),
+    // Share of the event's cost in basis points (10000 = 100%). Direct rows are
+    // 10000; a shared-cost event has multiple rows whose pct sum to exactly 10000.
+    allocationPct: integer("allocation_pct").notNull().default(10000),
     ruleId: uuid("rule_id").references(() => attributionRules.id),
     overridden: boolean("overridden").notNull().default(false),
     computedAt: timestamp("computed_at", { withTimezone: true })
@@ -638,7 +676,11 @@ export const costAllocations = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("uniq_cost_allocations_event").on(t.orgId, t.usageEventId),
+    // A direct/uncoded event has one row; a shared-cost event has several (one
+    // per target cost center). Row-set correctness is enforced by construction —
+    // every writer deletes the event's rows before inserting (delete-then-insert)
+    // and recompute is delete-all-then-rebuild — so no DB unique is needed here.
+    index("idx_cost_allocations_event").on(t.orgId, t.usageEventId),
     index("idx_cost_allocations_status").on(t.orgId, t.codingStatus),
   ]
 );

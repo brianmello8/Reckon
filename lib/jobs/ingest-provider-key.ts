@@ -268,6 +268,8 @@ async function upsertRows(
           model: row.model,
           agentId,
           workflowId: null, // set later by observability attribution
+          costMicros: row.cost_usd_micros,
+          tokens: row.input_tokens + row.output_tokens,
         },
         keyRow.orgId,
         allocRules,

@@ -263,6 +263,22 @@ A **light**, deterministic, ordered, overridable mapping from usage to finance d
 
 ---
 
+## 3f. Shared-cost allocation (drivers)
+
+Spend that maps to a shared key/gateway rather than one owner is split across cost centers by a **driver** (Phase 9.3). A rule marks an event as shared by assigning an `allocation_driver_id` (instead of a `cost_center_id`) in its `assign`.
+
+**Driver methods** (`allocation_drivers.method`, with method-specific `config` jsonb):
+- `usage_tokens` *(default, fairest for AI)* — split by each target cost center's share of directly-attributed token volume in scope. `config.cost_center_ids` (optional; defaults to all cost centers with usage).
+- `even` — equal split across `config.cost_center_ids`.
+- `fixed_pct` — `config.weights` `{ ccId: bps }`.
+- `headcount` / `revenue` — split by `config.values` `{ ccId: number }`. These are **external numbers we don't hold**; the customer supplies them in config and we **never fabricate** them (the engine refuses to split if values are absent — the stop-and-ask).
+
+**Split representation.** A shared event produces **multiple `cost_allocations` rows** (one per target cost center), each with `allocation_pct` in **basis points** (10000 = 100%). Direct/uncoded events are a single row at `allocation_pct = 10000`. The DB has no unique on `(org, event)` anymore — a direct event has one row, a shared event several — and correctness is by construction: every writer deletes the event's rows before inserting, and recompute is delete-all-then-rebuild. Recompute is two-pass: pass 1 base-codes every event and accumulates per-cost-center token volume; pass 2 emits the split rows.
+
+**Splits sum to exactly 100%.** The split uses **largest-remainder** over the targets so the basis points sum to **exactly 10000** — the rounding residual is distributed, never dropped. If `organizations.rounding_cost_center_id` is configured, the residual lands on that cost center instead. Both paths guarantee an exact 10000-bps sum.
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:
