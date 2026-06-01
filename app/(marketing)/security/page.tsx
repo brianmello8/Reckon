@@ -106,6 +106,27 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: "Compliance posture",
+    points: [
+      {
+        h: "We inherit certified infrastructure",
+        b: "Every sub-processor that stores or processes customer data — Vercel, Supabase (Postgres), AWS (KMS), Clerk, Stripe, Inngest, Sentry — maintains SOC 2 Type II and/or ISO 27001 certification. The physical, network, and host-level controls of the platforms Reckon runs on are independently audited; we build our application controls on top of them.",
+      },
+      {
+        h: "Reduced compliance scope by design",
+        b: "Because we never receive your prompts, responses, or any AI content, we don't process your end-users' personal data through the model path. That keeps a large category of regulated data entirely out of Reckon and shrinks the scope of any security review.",
+      },
+      {
+        h: "SOC 2 on our roadmap",
+        b: "A SOC 2 Type II examination is on our roadmap, and we'll commit to a timeline as part of enterprise agreements. In the meantime we support vendor security reviews directly — completed CAIQ questionnaire, a DPA, and our sub-processor list are available on request.",
+      },
+      {
+        h: "US data residency",
+        b: "Reckon and its sub-processors operate in the United States. A current sub-processor list is maintained in our Privacy Policy.",
+      },
+    ],
+  },
+  {
     title: "Data handling",
     points: [
       {
@@ -155,7 +176,23 @@ export default function SecurityPage() {
         ))}
       </div>
 
-      <div className="mt-14 rounded-xl border border-line bg-paper p-6">
+      <div className="mt-14 rounded-xl border border-brand-line bg-brand-soft p-6">
+        <h2 className="text-[16px] font-semibold text-ink">
+          Running a vendor security review?
+        </h2>
+        <p className="mt-2 text-[14px] leading-relaxed text-ink-2">
+          We make security reviews easy. Email{" "}
+          <a href="mailto:brianmello96@gmail.com" className="text-brand-ink underline">
+            brianmello96@gmail.com
+          </a>{" "}
+          and we&apos;ll send our security whitepaper, a completed CAIQ
+          questionnaire, our current sub-processor list, and a DPA ready to
+          sign. Most reviews close on these alone — and we&apos;re glad to walk
+          your team through the architecture.
+        </p>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-line bg-paper p-6">
         <h2 className="text-[16px] font-semibold text-ink">
           Responsible disclosure
         </h2>
