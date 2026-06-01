@@ -18,6 +18,7 @@ import {
   Tags,
   FileText,
   Scale,
+  TrendingUp,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -48,6 +49,7 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
     { href: "/finance/coding", label: "Coding", icon: Tags },
     { href: "/finance/invoices", label: "Invoices", icon: FileText },
     { href: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
+    { href: "/finance/forecast", label: "Forecast", icon: TrendingUp },
   ],
 };
 

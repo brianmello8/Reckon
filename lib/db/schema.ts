@@ -804,6 +804,42 @@ export const providerRateSnapshots = pgTable(
   ]
 );
 
+// Next-invoice forecast snapshots (Phase 10.3, architecture §5c). One per
+// (provider, period, day) so we keep the projection trajectory for accuracy
+// tracking. All money in USD micros; band is low/high + a percent.
+export const forecastSnapshots = pgTable(
+  "forecast_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    provider: text("provider").notNull(),
+    period: text("period").notNull(), // YYYY-MM
+    snapshotDate: date("snapshot_date").notNull(),
+    mtdObserved: bigint("mtd_observed", { mode: "bigint" }).notNull(),
+    throughDay: integer("through_day").notNull(),
+    daysInMonth: integer("days_in_month").notNull(),
+    runRateDaily: bigint("run_rate_daily", { mode: "bigint" }).notNull(),
+    projectedTotal: bigint("projected_total", { mode: "bigint" }).notNull(),
+    low: bigint("low", { mode: "bigint" }).notNull(),
+    high: bigint("high", { mode: "bigint" }).notNull(),
+    bandPct: integer("band_pct").notNull(), // ±% confidence band, whole percent
+    method: jsonb("method"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_forecast_snapshots_day").on(
+      t.orgId,
+      t.provider,
+      t.period,
+      t.snapshotDate
+    ),
+  ]
+);
+
 // Invoice ↔ usage reconciliation (Phase 10.2, architecture §5a).
 export const reconciliations = pgTable(
   "reconciliations",

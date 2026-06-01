@@ -429,6 +429,21 @@ For an invoice's billing period, compare the provider's billed total to Reckon's
 
 ---
 
+## 5c. Invoice forecasting (Phase 10.3)
+
+Project each provider's next invoice from month-to-date usage. Deliberately **simple and explainable** — no opaque dependency (`lib/forecast/forecast.ts`):
+
+```
+projected = MTD observed + Σ over remaining days of that day's run-rate
+band      = dailyStdDev × √(remaining days)     (std-error of the tail sum)
+```
+
+The per-day run-rate is the MTD daily mean, **optionally split weekday vs weekend** when both day-types have data and differ by >15% of the mean (a real signal, not curve-fitting; `seasonality` flag records which was used). The band yields a `±%` confidence interval (`low = max(MTD, projected − band)`, never below what's already spent). Reproducible by hand: e.g. MTD $50 over 5 days, 26 days left → `50 + 26×10 = $310`.
+
+**Accuracy tracking.** Each computed forecast is persisted as a `forecast_snapshots` row, one per `(provider, period, day)` (so the projection trajectory is kept). `getForecastAccuracy` compares the **final** snapshot for a past period against the **actual** invoice for that period (matched by month) and surfaces forecast-vs-actual error — e.g. "Last 3 forecasts within ±4%". Period membership uses the same provider-timestamp rule as elsewhere.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

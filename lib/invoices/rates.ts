@@ -44,34 +44,34 @@ export async function captureRateSnapshots(
   effectiveFrom: string
 ): Promise<{ inserted: number; checked: number }> {
   const rows = currentRateRows();
-  let inserted = 0;
-  for (const r of rows) {
-    const [latest] = await db
-      .select({ rate: providerRateSnapshots.rate })
-      .from(providerRateSnapshots)
-      .where(
-        and(
-          eq(providerRateSnapshots.orgId, orgId),
-          eq(providerRateSnapshots.provider, r.provider),
-          eq(providerRateSnapshots.model, r.model),
-          eq(providerRateSnapshots.unit, r.unit)
-        )
-      )
-      .orderBy(desc(providerRateSnapshots.effectiveFrom), desc(providerRateSnapshots.capturedAt))
-      .limit(1);
-    if (latest && BigInt(latest.rate) === r.rate) continue; // unchanged → skip
-    await db.insert(providerRateSnapshots).values({
-      orgId,
-      provider: r.provider,
-      model: r.model,
-      unit: r.unit,
-      rate: r.rate,
-      effectiveFrom,
-      source: "mvp_rate_source",
-    });
-    inserted += 1;
+  // One query for the latest rate per (provider, model, unit), then one batch
+  // insert of only the changed rows — avoids ~N sequential round-trips that can
+  // hit a statement timeout when called on every invoice save.
+  const existing = (await db.execute(sql`
+    SELECT DISTINCT ON (provider, model, unit) provider, model, unit, rate
+    FROM provider_rate_snapshots
+    WHERE org_id = ${orgId}
+    ORDER BY provider, model, unit, effective_from DESC, captured_at DESC
+  `)) as unknown as Array<{ provider: string; model: string; unit: string; rate: string }>;
+  const latest = new Map(existing.map((e) => [`${e.provider}|${e.model}|${e.unit}`, BigInt(e.rate)]));
+
+  const changed = rows.filter(
+    (r) => latest.get(`${r.provider}|${r.model}|${r.unit}`) !== r.rate
+  );
+  if (changed.length > 0) {
+    await db.insert(providerRateSnapshots).values(
+      changed.map((r) => ({
+        orgId,
+        provider: r.provider,
+        model: r.model,
+        unit: r.unit,
+        rate: r.rate,
+        effectiveFrom,
+        source: "mvp_rate_source" as const,
+      }))
+    );
   }
-  return { inserted, checked: rows.length };
+  return { inserted: changed.length, checked: rows.length };
 }
 
 /**
