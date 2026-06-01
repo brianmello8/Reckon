@@ -163,6 +163,35 @@ CREATE INDEX idx_anomalies_org_unack
 
 ---
 
+## 3a. Attribution model (agents & workflows)
+
+The MVP attributes spend to a **developer**. Agents and workflows add a second, finer attribution axis: *which workflow/agent burned this?* — the question that matters once one agent can outspend a whole team. This layer is **derived** and sits entirely on top of `usage_events`. It is added in Phase 8 (prompt 8.1).
+
+### The immutability rule (load-bearing)
+
+`usage_events` is the source of truth and is **immutable and idempotent** on its natural key (`provider_key_id, external_identity, time_bucket, model`). We **never** add a mutable attribution column to it and **never** `UPDATE` a usage row to attach an agent, workflow, run, or customer. Attribution is *derived* and lives in its own recomputable tables, each keyed back to a `usage_events` row. If a mapping changes, we recompute the derived table; the raw ledger never moves.
+
+This keeps re-ingestion, retries, and provider back-revisions safe (the ledger invariant is untouched) and lets us re-derive attribution from scratch at any time without risk to the underlying numbers.
+
+### Tables
+
+All five are org-scoped (`org_id NOT NULL`) and carry the standard RLS policy
+`USING (org_id = current_setting('app.current_org_id', true)::uuid)` — see §4. Drizzle does not manage policies, so each is enabled in the migration alongside the table (mirroring `0002_enable_rls.sql`).
+
+- **`agents`** — a named agent whose spend we attribute (`name`, `description`, `status` = `active | archived`). A product/automation, not a person.
+- **`workflows`** — a logical run-path. `agent_id` is a **nullable** FK to `agents` (a workflow may stand alone or belong to an agent). `name`, `description`, `status` = `active | archived`.
+- **`workflow_runs`** — a single execution of a workflow. `external_run_id` is the customer's own run/trace id (from observability or the SDK), **nullable**, and **unique per `(org_id, workflow_id, external_run_id)` when present** (partial unique index `WHERE external_run_id IS NOT NULL`). Carries `started_at`/`ended_at` (nullable), `status` = `running | completed | failed | unknown`, and `customer_ref` (nullable — the customer's end-customer this run served, for per-customer COGS later). Indexed on `(org_id, workflow_id, started_at)`.
+- **`attribution_sources`** — records **how** an attribution was derived, for audit + recompute. `source_type` = `key_mapping | observability | sdk_tag`, a `label`, and a `config` jsonb for source-specific settings.
+- **`usage_attribution`** — the **derived join**, recomputable, never the source of truth. One row per `usage_events` row: `usage_event_id` (FK), nullable `agent_id` / `workflow_id` / `workflow_run_id` / `customer_ref`, an `attribution_source_id` (FK, how it was derived), and `confidence` = `exact` (key/tag mapping) or `inferred` (timestamp/fingerprint join). The **unique index on `(org_id, usage_event_id)`** enforces one attribution row per event.
+
+### Recompute strategy
+
+`usage_attribution` is fully derivable from `usage_events` + the active mappings/sources. When a source mapping changes (e.g. a key is reassigned to a different agent), we recompute **per affected event** by **delete + reinsert** of its `usage_attribution` row — idempotent, so re-running yields identical row counts and never duplicates (the unique index on `(org_id, usage_event_id)` guarantees it). At ingest, a new `usage_events` row is attributed inline only when a mapping applies; with no mapping, no attribution row is written and ingestion behaves exactly as before. The raw ledger is read, never written, by any of this.
+
+> Read-performance note: if attribution rollups get slow, the answer is a materialized rollup keyed off `usage_attribution`, **not** denormalizing dimensions onto `usage_events`. The ledger stays immutable.
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:

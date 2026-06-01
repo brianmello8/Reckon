@@ -42,6 +42,29 @@ export const anomalySeverityEnum = pgEnum("anomaly_severity", [
 ]);
 export const digestKindEnum = pgEnum("digest_kind", ["daily", "weekly"]);
 
+// --- Attribution (Phase 8 / §3a) enums ---
+
+export const agentStatusEnum = pgEnum("agent_status", ["active", "archived"]);
+export const workflowStatusEnum = pgEnum("workflow_status", [
+  "active",
+  "archived",
+]);
+export const workflowRunStatusEnum = pgEnum("workflow_run_status", [
+  "running",
+  "completed",
+  "failed",
+  "unknown",
+]);
+export const attributionSourceTypeEnum = pgEnum("attribution_source_type", [
+  "key_mapping",
+  "observability",
+  "sdk_tag",
+]);
+export const attributionConfidenceEnum = pgEnum("attribution_confidence", [
+  "exact",
+  "inferred",
+]);
+
 // --- Tables ---
 
 export const organizations = pgTable("organizations", {
@@ -229,6 +252,139 @@ export const usageEvents = pgTable(
   ]
 );
 
+// --- Attribution model (Phase 8, architecture §3a) ---
+// usage_events stays immutable and idempotent. Attribution is DERIVED and lives
+// in these recomputable tables, keyed back to usage_events. We never UPDATE a
+// usage row to attach an agent/workflow.
+
+// A named agent whose spend we attribute (e.g. "support bot", "code reviewer").
+export const agents = pgTable(
+  "agents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: agentStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_agents_org").on(t.orgId)]
+);
+
+// A logical workflow/run-path. May or may not belong to a named agent.
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    // Nullable: a workflow may exist without a parent agent.
+    agentId: uuid("agent_id").references(() => agents.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: workflowStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_workflows_org_agent").on(t.orgId, t.agentId)]
+);
+
+// A single execution of a workflow. external_run_id is the customer's own
+// run/trace id (from observability or the SDK), unique per workflow when present.
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(() => workflows.id),
+    externalRunId: text("external_run_id"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    status: workflowRunStatusEnum("status").notNull().default("unknown"),
+    // The customer's end-customer this run served, for per-customer COGS later.
+    customerRef: text("customer_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_workflow_runs_org_wf_started").on(
+      t.orgId,
+      t.workflowId,
+      t.startedAt
+    ),
+    uniqueIndex("uniq_workflow_runs_external")
+      .on(t.orgId, t.workflowId, t.externalRunId)
+      .where(sql`external_run_id IS NOT NULL`),
+  ]
+);
+
+// Records HOW an attribution was derived, for audit + recompute.
+export const attributionSources = pgTable(
+  "attribution_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    sourceType: attributionSourceTypeEnum("source_type").notNull(),
+    label: text("label").notNull(),
+    config: jsonb("config"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_attribution_sources_org").on(t.orgId)]
+);
+
+// The DERIVED join — recomputable, never the source of truth. One row per
+// usage_event; recompute deletes + reinserts the row for an event.
+export const usageAttribution = pgTable(
+  "usage_attribution",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    usageEventId: uuid("usage_event_id")
+      .notNull()
+      .references(() => usageEvents.id),
+    agentId: uuid("agent_id").references(() => agents.id),
+    workflowId: uuid("workflow_id").references(() => workflows.id),
+    workflowRunId: uuid("workflow_run_id").references(() => workflowRuns.id),
+    customerRef: text("customer_ref"),
+    attributionSourceId: uuid("attribution_source_id")
+      .notNull()
+      .references(() => attributionSources.id),
+    // exact = key/tag mapping; inferred = timestamp/fingerprint join.
+    confidence: attributionConfidenceEnum("confidence").notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_usage_attribution_event").on(t.orgId, t.usageEventId),
+    index("idx_usage_attribution_agent").on(t.orgId, t.agentId),
+    index("idx_usage_attribution_workflow").on(t.orgId, t.workflowId),
+  ]
+);
+
 export const anomalies = pgTable(
   "anomalies",
   {
@@ -388,6 +544,77 @@ export const usageEventsRelations = relations(usageEvents, ({ one }) => ({
     references: [developers.id],
   }),
 }));
+
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [agents.orgId],
+    references: [organizations.id],
+  }),
+  workflows: many(workflows),
+}));
+
+export const workflowsRelations = relations(workflows, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [workflows.orgId],
+    references: [organizations.id],
+  }),
+  agent: one(agents, {
+    fields: [workflows.agentId],
+    references: [agents.id],
+  }),
+  runs: many(workflowRuns),
+}));
+
+export const workflowRunsRelations = relations(workflowRuns, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [workflowRuns.orgId],
+    references: [organizations.id],
+  }),
+  workflow: one(workflows, {
+    fields: [workflowRuns.workflowId],
+    references: [workflows.id],
+  }),
+}));
+
+export const attributionSourcesRelations = relations(
+  attributionSources,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [attributionSources.orgId],
+      references: [organizations.id],
+    }),
+  })
+);
+
+export const usageAttributionRelations = relations(
+  usageAttribution,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [usageAttribution.orgId],
+      references: [organizations.id],
+    }),
+    usageEvent: one(usageEvents, {
+      fields: [usageAttribution.usageEventId],
+      references: [usageEvents.id],
+    }),
+    agent: one(agents, {
+      fields: [usageAttribution.agentId],
+      references: [agents.id],
+    }),
+    workflow: one(workflows, {
+      fields: [usageAttribution.workflowId],
+      references: [workflows.id],
+    }),
+    workflowRun: one(workflowRuns, {
+      fields: [usageAttribution.workflowRunId],
+      references: [workflowRuns.id],
+    }),
+    attributionSource: one(attributionSources, {
+      fields: [usageAttribution.attributionSourceId],
+      references: [attributionSources.id],
+    }),
+  })
+);
 
 export const anomaliesRelations = relations(anomalies, ({ one }) => ({
   organization: one(organizations, {
