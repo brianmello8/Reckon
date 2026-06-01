@@ -71,3 +71,16 @@ export function computeOpenAICostMicros(
     cachedInputTokens * p.cacheReadPerToken
   );
 }
+
+/** All current per-model rates as snapshot rows (micros per token). */
+export function openaiRateRows(): {
+  model: string;
+  unit: string;
+  ratePerToken: number;
+}[] {
+  return Object.entries(pricing).flatMap(([model, p]) => [
+    { model, unit: "input_tokens", ratePerToken: p.inputPerToken },
+    { model, unit: "output_tokens", ratePerToken: p.outputPerToken },
+    { model, unit: "cached_input_tokens", ratePerToken: p.cacheReadPerToken },
+  ]);
+}

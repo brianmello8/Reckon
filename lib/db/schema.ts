@@ -113,6 +113,26 @@ export const budgetScopeTypeEnum = pgEnum("budget_scope_type", [
   "gl_account",
   "project",
 ]);
+// Invoices & rate snapshots (Phase 10.1)
+export const expectedCreditsSourceEnum = pgEnum("expected_credits_source", [
+  "none",
+  "manual",
+  "commitment",
+]);
+export const invoiceSourceEnum = pgEnum("invoice_source", [
+  "manual",
+  "billing_api",
+  "ocr",
+]);
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "draft",
+  "confirmed",
+]);
+export const rateSnapshotSourceEnum = pgEnum("rate_snapshot_source", [
+  "mvp_rate_source",
+  "provider_published",
+  "manual",
+]);
 
 // --- Tables ---
 
@@ -651,6 +671,117 @@ export const budgets = pgTable(
       t.scopeType,
       t.scopeId,
       t.period
+    ),
+  ]
+);
+
+// --- Invoices & rate snapshots (Phase 10.1, architecture §5) ---
+
+export const providerInvoices = pgTable(
+  "provider_invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    provider: text("provider").notNull(),
+    invoiceNumber: text("invoice_number").notNull(),
+    billingPeriodStart: date("billing_period_start").notNull(),
+    billingPeriodEnd: date("billing_period_end").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    subtotal: bigint("subtotal", { mode: "bigint" }).notNull().default(sql`0`),
+    creditsApplied: bigint("credits_applied", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    // What we were PROMISED this period. NULL = unknown (10.2 skips the
+    // missing-credit check); 0 = nothing promised. Never coerce null to 0.
+    expectedCredits: bigint("expected_credits", { mode: "bigint" }),
+    expectedCreditsSource: expectedCreditsSourceEnum("expected_credits_source")
+      .notNull()
+      .default("none"),
+    tax: bigint("tax", { mode: "bigint" }).notNull().default(sql`0`),
+    total: bigint("total", { mode: "bigint" }).notNull().default(sql`0`),
+    dueDate: date("due_date"),
+    paymentTerms: text("payment_terms"),
+    source: invoiceSourceEnum("source").notNull(),
+    status: invoiceStatusEnum("status").notNull().default("draft"),
+    // True when ≥1 line item carries model + quantity + amount (a per-model
+    // effective rate is derivable). A lump-sum invoice is false → 10.2 marks
+    // price_change uncomputable rather than guessing.
+    rateCheckable: boolean("rate_checkable").notNull().default(false),
+    // Reference to the stored original PDF (the file, not its parsed text).
+    pdfFileRef: text("pdf_file_ref"),
+    raw: jsonb("raw"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_provider_invoices_number").on(
+      t.orgId,
+      t.provider,
+      t.invoiceNumber
+    ),
+    index("idx_provider_invoices_period").on(
+      t.orgId,
+      t.provider,
+      t.billingPeriodStart
+    ),
+  ]
+);
+
+export const invoiceLineItems = pgTable(
+  "invoice_line_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => providerInvoices.id),
+    description: text("description").notNull(),
+    model: text("model"),
+    quantity: bigint("quantity", { mode: "bigint" }),
+    unit: text("unit"),
+    amount: bigint("amount", { mode: "bigint" }).notNull().default(sql`0`),
+  },
+  (t) => [index("idx_invoice_line_items_invoice").on(t.orgId, t.invoiceId)]
+);
+
+// APPEND-ONLY, immutable point-in-time rates (same discipline as usage_events).
+// `rate` is micros per 1,000,000 units (so sub-micro per-token prices stay
+// integers). A change is a NEW row; historical rows are never edited.
+export const providerRateSnapshots = pgTable(
+  "provider_rate_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    unit: text("unit").notNull(),
+    rate: bigint("rate", { mode: "bigint" }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveTo: date("effective_to"),
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    source: rateSnapshotSourceEnum("source").notNull(),
+    raw: jsonb("raw"),
+  },
+  (t) => [
+    index("idx_rate_snapshots_lookup").on(
+      t.orgId,
+      t.provider,
+      t.model,
+      t.unit,
+      t.effectiveFrom
     ),
   ]
 );

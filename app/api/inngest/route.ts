@@ -17,6 +17,10 @@ import {
   cronObservabilityPoll,
 } from "@/lib/jobs/poll-observability";
 import { recomputeAllocations } from "@/lib/jobs/recompute-allocations";
+import {
+  cronMonthlyInvoices,
+  syncInvoicesForOrg,
+} from "@/lib/jobs/sync-invoices";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -25,6 +29,8 @@ export const { GET, POST, PUT } = serve({
     pollObservabilityConnection,
     cronObservabilityPoll,
     recomputeAllocations,
+    cronMonthlyInvoices,
+    syncInvoicesForOrg,
     helloWorld,
     ingestProviderKey,
     orchestrateIngestion,

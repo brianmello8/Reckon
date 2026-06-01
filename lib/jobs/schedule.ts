@@ -7,3 +7,4 @@ export const CRON_HOURLY_INGESTION = "0 * * * *"; // Every hour
 export const CRON_DAILY_DIGEST = "*/15 * * * *"; // Every 15 min (checks org local time)
 export const CRON_DAILY_RETENTION = "0 3 * * *"; // 03:00 UTC daily
 export const CRON_HOURLY_OBSERVABILITY = "30 * * * *"; // Hourly, offset from ingestion
+export const CRON_MONTHLY_INVOICES = "0 4 2 * *"; // 04:00 UTC on the 2nd of each month

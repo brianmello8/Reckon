@@ -15,10 +15,45 @@ export interface UsageRow {
   raw: Record<string, unknown>;
 }
 
+// Normalized invoice from a provider billing API (Phase 10.1). All money in
+// USD micros. Captured as a draft for human review; never auto-confirmed.
+export interface InvoiceLine {
+  description: string;
+  model?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  amount: number; // micros
+}
+export interface NormalizedInvoice {
+  invoiceNumber: string;
+  billingPeriodStart: string; // YYYY-MM-DD
+  billingPeriodEnd: string; // YYYY-MM-DD
+  currency: string;
+  subtotal: number;
+  creditsApplied: number;
+  tax: number;
+  total: number;
+  dueDate?: string | null;
+  paymentTerms?: string | null;
+  lineItems: InvoiceLine[];
+  raw?: Record<string, unknown>;
+}
+
 export interface ProviderClient {
   fetchUsage(args: {
     apiKey: string;
     since: Date;
     until: Date;
   }): Promise<UsageRow[]>;
+
+  /**
+   * Optional: pull provider invoices for a window, where the provider exposes a
+   * billing/invoices API. Implemented per-provider that has one; absent on
+   * providers without an accessible invoices API.
+   */
+  fetchInvoices?(args: {
+    apiKey: string;
+    since: Date;
+    until: Date;
+  }): Promise<NormalizedInvoice[]>;
 }

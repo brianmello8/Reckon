@@ -391,6 +391,22 @@ sequenceDiagram
 
 ---
 
+## 5a. Invoices & rate snapshots (Phase 10)
+
+Invoice capture is the input to reconciliation (Phase 10.2). Two ingest paths now — **manual** entry and a **billing-API** sync — with a clean seam for emailed-PDF **OCR** later (the `invoice_source` enum includes `ocr`, but OCR/email intake is **not** built; an inbound attachment address is a PII/security surface that needs explicit sign-off first).
+
+**`provider_invoices` / `invoice_line_items`** (org-scoped, RLS). Money in USD micros. Invoices are period- and currency-aware. Billing-API sync (`cron-monthly-invoices` → `invoices/sync.requested`) upserts by `(org, provider, invoice_number)` and lands invoices as **draft** — never auto-confirmed; re-syncing preserves a human `confirmed` status. The original PDF is kept as a stored **file reference** (`pdf_file_ref`), not parsed-text-as-content.
+
+**`expected_credits` — null vs zero (the rule that lets 10.2 catch a *missing* credit).** `credits_applied` is what the invoice says was credited (faithful capture). `expected_credits` is what we were **promised** for the period (manual entry now; sourced from commitments in Phase 12). It is **NULLABLE**: `NULL` means "we don't know what was promised" → 10.2 **skips** the missing-credit check; `0` means "nothing was promised." These are different and never conflated — `expected_credits` is **never defaulted to 0**. `expected_credits_source` (`none | manual | commitment`) records provenance.
+
+**Rate-checkable flag.** A line carries `model + quantity + amount` so a per-model effective billed rate (`amount ÷ quantity`) is derivable. An invoice with ≥1 such line is `rate_checkable = true`; a lump-sum invoice is `false` → 10.2 marks `price_change` uncomputable for it rather than guessing.
+
+**`provider_rate_snapshots` — the point-in-time pricing baseline.** APPEND-ONLY and immutable (a DB trigger blocks `UPDATE`; same discipline as `usage_events`): a rate change is a **new row**, historical rates are never edited. `rate` is stored as **micros per 1,000,000 units** so sub-micro per-token prices stay integers. Captured on the monthly invoice cadence and on-ingest, **stamped with the observation date** (`captured_at` / `effective_from`) — never backdated. Only token-priced providers (Anthropic, OpenAI) have rate rows; seat/pass-through providers have none.
+
+**As-of resolution.** 10.2 resolves the rate effective during a billing period as the snapshot whose `effective_from ≤ periodStart` (and `effective_to` null or ≥ periodStart), latest `effective_from` wins. If **no** snapshot covers the period, that is reported as a **MISSING baseline (low confidence)** — never silently backfilled with the current rate.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid
