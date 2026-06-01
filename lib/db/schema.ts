@@ -108,6 +108,11 @@ export const allocationDriverMethodEnum = pgEnum("allocation_driver_method", [
   "fixed_pct",
   "even",
 ]);
+export const budgetScopeTypeEnum = pgEnum("budget_scope_type", [
+  "cost_center",
+  "gl_account",
+  "project",
+]);
 
 // --- Tables ---
 
@@ -616,6 +621,38 @@ export const allocationDrivers = pgTable(
       .defaultNow(),
   },
   (t) => [index("idx_allocation_drivers_org").on(t.orgId)]
+);
+
+// Budget per dimension scope + period (Phase 9.4, §3g). Kept separate from
+// actuals (cost_allocations); budget-vs-actual is computed at read time.
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    scopeType: budgetScopeTypeEnum("scope_type").notNull(),
+    scopeId: uuid("scope_id").notNull(),
+    // "YYYY-MM" for a month or "YYYY" for a year.
+    period: text("period").notNull(),
+    amountMicros: bigint("amount_micros", { mode: "bigint" }).notNull(),
+    currency: text("currency").notNull().default("USD"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_budgets_scope_period").on(
+      t.orgId,
+      t.scopeType,
+      t.scopeId,
+      t.period
+    ),
+  ]
 );
 
 // --- Account determination & allocations (Phase 9.2, architecture §3e) ---

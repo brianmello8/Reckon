@@ -279,6 +279,23 @@ Spend that maps to a shared key/gateway rather than one owner is split across co
 
 ---
 
+## 3g. Finance showback, rollups & budgets
+
+The Finance surface root (`/finance`, Phase 9.4) is **read-only showback finance can trust**. It never mutates `usage_events` or `cost_allocations`.
+
+**Reconciliation by construction.** Rollups read `cost_allocations` via a **LEFT JOIN from `usage_events`**, so every event is represented — uncoded events (no allocation row) fall into an explicit **"Uncoded"** bucket. Allocated cost = `usage_event.cost × allocation_pct ÷ 10000`. We sum the **weighted** value (`cost × pct`) per group and divide by 10000 once at the end, so a shared event's split rows recombine to its exact cost and the **grand total equals raw billed usage exactly**. A shared key visibly fans out across its consuming cost centers.
+
+**Views** (all period-selectable by month, each drills to contributing usage):
+- **Cost centers** — rolled up the `cost_centers` tree (each node shows direct + rolled-up subtree total). Weighted sums roll up the tree, divided to micros per node.
+- **GL accounts** — grouped with a COGS-vs-opex headline (`gl_accounts.account_type`), so margin-relevant spend is obvious at a glance.
+- **Entities** and **Product lines** — flat rollups.
+
+**Budgets.** `budgets(scope_type ∈ {cost_center, gl_account, project}, scope_id, period "YYYY-MM"|"YYYY", amount_micros)` is kept **separate from actuals**; budget-vs-actual is computed at read time. Cost-center actuals roll up the **subtree**. Each row shows variance in $ and %, plus a month-to-date **pace** indicator (budget × day-of-month ÷ days-in-month vs actual) for the current month.
+
+**Privacy — dimensions, not people.** Showback defaults to rolled-up dimensions and shows **no individual developer names**. The drill-through to contributing usage includes developer names **only** when the viewer also holds `operations` surface access (`getDrillAction` passes `hasSurface(user, "operations")`); a finance-only member sees provider/model/cost but no people.
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:
