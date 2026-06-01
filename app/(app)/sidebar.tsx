@@ -15,6 +15,7 @@ import {
   Workflow,
   Landmark,
   FolderTree,
+  Tags,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -42,6 +43,7 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
   finance: [
     { href: "/finance", label: "Finance", icon: Landmark, exact: true },
     { href: "/finance/dimensions", label: "Dimensions", icon: FolderTree },
+    { href: "/finance/coding", label: "Coding", icon: Tags },
   ],
 };
 

@@ -10,6 +10,8 @@ import {
   date,
   jsonb,
   customType,
+  integer,
+  boolean,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
@@ -94,6 +96,11 @@ export const glAccountTypeEnum = pgEnum("gl_account_type", [
   "opex_sm",
   "other",
 ]);
+export const codingStatusEnum = pgEnum("coding_status", [
+  "coded",
+  "needs_coding",
+  "suspense",
+]);
 
 // --- Tables ---
 
@@ -112,6 +119,9 @@ export const organizations = pgTable("organizations", {
     .default("America/Los_Angeles"),
   digestSlackChannelId: text("digest_slack_channel_id"),
   linearTeamId: text("linear_team_id"),
+  // Optional GL account that unmapped spend routes to (Phase 9.2). When unset,
+  // unmapped spend lands in the needs-coding queue instead of a suspense code.
+  suspenseGlAccountId: uuid("suspense_gl_account_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -573,6 +583,99 @@ export const productLines = pgTable(
   (t) => [uniqueIndex("uniq_product_lines_org_code").on(t.orgId, t.code)]
 );
 
+// --- Account determination & allocations (Phase 9.2, architecture §3e) ---
+
+// Ordered, overridable mapping from usage to finance dimensions. Lower priority
+// wins; first match assigns, later rules fill only still-unset fields.
+export const attributionRules = pgTable(
+  "attribution_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    priority: integer("priority").notNull().default(100),
+    name: text("name").notNull(),
+    // match: { provider?, model?, environment?, agentId?, workflowId?,
+    //          costCenterHint?, project? } — all specified keys must match.
+    match: jsonb("match").notNull().default({}),
+    // assign: any subset of gl_account_id, cost_center_id, entity_id,
+    //         project_id, product_line_id.
+    assign: jsonb("assign").notNull().default({}),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_attribution_rules_org_priority").on(t.orgId, t.priority)]
+);
+
+// DERIVED, recomputable coding output — one row per usage_event. Never the
+// source of truth; rebuilt from usage_events + rules + overrides.
+export const costAllocations = pgTable(
+  "cost_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    usageEventId: uuid("usage_event_id")
+      .notNull()
+      .references(() => usageEvents.id),
+    glAccountId: uuid("gl_account_id").references(() => glAccounts.id),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+    entityId: uuid("entity_id").references(() => entities.id),
+    projectId: uuid("project_id").references(() => projects.id),
+    productLineId: uuid("product_line_id").references(() => productLines.id),
+    codingStatus: codingStatusEnum("coding_status").notNull(),
+    ruleId: uuid("rule_id").references(() => attributionRules.id),
+    overridden: boolean("overridden").notNull().default(false),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_cost_allocations_event").on(t.orgId, t.usageEventId),
+    index("idx_cost_allocations_status").on(t.orgId, t.codingStatus),
+  ]
+);
+
+// Durable manual codings (the "overrides" input). Kept separate from
+// cost_allocations so a full rebuild re-applies them and they survive recompute.
+export const costAllocationOverrides = pgTable(
+  "cost_allocation_overrides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    usageEventId: uuid("usage_event_id")
+      .notNull()
+      .references(() => usageEvents.id),
+    glAccountId: uuid("gl_account_id").references(() => glAccounts.id),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+    entityId: uuid("entity_id").references(() => entities.id),
+    projectId: uuid("project_id").references(() => projects.id),
+    productLineId: uuid("product_line_id").references(() => productLines.id),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_cost_allocation_overrides_event").on(
+      t.orgId,
+      t.usageEventId
+    ),
+  ]
+);
+
 export const anomalies = pgTable(
   "anomalies",
   {
@@ -854,6 +957,24 @@ export const costCentersRelations = relations(
       relationName: "cost_center_parent",
     }),
     children: many(costCenters, { relationName: "cost_center_parent" }),
+  })
+);
+
+export const costAllocationsRelations = relations(
+  costAllocations,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [costAllocations.orgId],
+      references: [organizations.id],
+    }),
+    usageEvent: one(usageEvents, {
+      fields: [costAllocations.usageEventId],
+      references: [usageEvents.id],
+    }),
+    rule: one(attributionRules, {
+      fields: [costAllocations.ruleId],
+      references: [attributionRules.id],
+    }),
   })
 );
 

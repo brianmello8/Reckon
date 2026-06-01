@@ -10,6 +10,10 @@ import {
   getOrCreateKeyMappingSource,
   upsertEventAttribution,
 } from "@/lib/attribution/key-mapping";
+import {
+  loadAllocationRules,
+  allocateEventInline,
+} from "@/lib/finance/allocate";
 import { ProviderAuthError, ProviderTransientError } from "@/lib/providers/errors";
 import { subHours, subDays, addDays, parseISO, differenceInDays, min } from "date-fns";
 import type { UsageRow } from "@/lib/providers/types";
@@ -125,7 +129,7 @@ export const ingestProviderKey = inngest.createFunction(
       }
 
       const upserted = await step.run(`upsert-chunk-${i}`, async () => {
-        return upsertRows(rows, keyRow);
+        return upsertRows(rows, keyRow, providerSlug);
       });
 
       totalUpserted += upserted;
@@ -149,9 +153,18 @@ export const ingestProviderKey = inngest.createFunction(
 
 async function upsertRows(
   rows: UsageRow[],
-  keyRow: { id: string; orgId: string; providerId: string; developerId: string | null }
+  keyRow: { id: string; orgId: string; providerId: string; developerId: string | null },
+  providerSlug: string
 ): Promise<number> {
   if (rows.length === 0) return 0;
+
+  // Account-determination inputs (Phase 9.2). Loaded once; if the org has no
+  // rules and no suspense account, inline allocation is skipped entirely
+  // (additive — ingestion behaves exactly as before).
+  const { rules: allocRules, suspense: suspenseGl } = await loadAllocationRules(
+    keyRow.orgId
+  );
+  const allocationEnabled = allocRules.length > 0 || !!suspenseGl;
 
   // Resolve each distinct provider identity to a developer once per chunk
   // (upserts provider_identities + auto-creates developers where labelled).
@@ -242,6 +255,24 @@ async function upsertRows(
         agentId,
         sourceId: keyMappingSourceId,
       });
+    }
+
+    // Inline allocation (Phase 9.2): code the event from rules/suspense when
+    // configured. Additive — skipped entirely when no rules/suspense exist, and
+    // never clobbers a manual override.
+    if (allocationEnabled && upserted) {
+      await allocateEventInline(
+        {
+          usageEventId: upserted.id,
+          providerSlug,
+          model: row.model,
+          agentId,
+          workflowId: null, // set later by observability attribution
+        },
+        keyRow.orgId,
+        allocRules,
+        suspenseGl
+      );
     }
     count++;
   }

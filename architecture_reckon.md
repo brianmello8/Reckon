@@ -249,6 +249,20 @@ All carry a `status` enum (`active | archived`); the UI archives rather than har
 
 ---
 
+## 3e. Account determination & cost allocations
+
+A **light**, deterministic, ordered, overridable mapping from usage to finance dimensions (Phase 9.2) — deliberately *not* a general rules engine (Ramp/Coupa own that). `lib/finance/allocate.ts` is the engine.
+
+**Rule evaluation order.** `attribution_rules` are evaluated in `priority` order, **lower wins**. A rule's `match` (jsonb) must hold on every specified key; only `provider`, `model`, `agentId`, `workflowId` are verifiable, so a rule constraining anything else (e.g. `environment`) does **not** match — we never assume an unverifiable constraint holds. The **first** matching rule assigns; later matching rules **fill only still-unset** fields (never overwrite). The first rule to contribute is recorded as `rule_id`.
+
+**Suspense / never-guess.** If no rule assigns a GL account, the event is **never** silently coded. It routes to `coding_status = suspense` (with `gl_account_id` set to the org's configured `organizations.suspense_gl_account_id`) when one exists, else `needs_coding`. The needs-coding queue (`/finance/coding`) lists everything not `coded`, grouped by provider/model/agent; a controller codes a group manually.
+
+**Overrides survive recompute.** Manual codings live in their own durable table, **`cost_allocation_overrides`** (keyed per event) — *not* in the derived output. `cost_allocations` is the recomputable output (one row per usage_event, unique on `(org_id, usage_event_id)`), with `overridden = true` flagging override-sourced rows. Recompute (`recomputeOrgAllocations`) is a **drop-and-rebuild**: delete the org's `cost_allocations`, then recompute each event from rules + overrides + suspense. Because overrides are a separate input, they are re-applied on every rebuild — so `cost_allocations` is **fully derivable from `usage_events` + rules + overrides** (drop and rebuild, counts match), and a manual override always wins and persists. Inline coding at ingest is additive (writes a row only when a rule/suspense codes the event; never clobbers an override via `setWhere overridden = false`). Fired via the `recompute-allocations` Inngest job on any rule/override/suspense change.
+
+**COGS stop-and-ask (gross-margin guard).** Activating a rule that assigns a **COGS** GL account with a **broad** match (empty, or `provider`-only — not narrowed to a model/agent/workflow) is gated: `saveRule` throws `COGS_CONFIRM_REQUIRED` and the UI requires explicit confirmation before activating. Misclassifying opex as COGS distorts gross margin, so this is never silent.
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:
