@@ -23,11 +23,17 @@ function toServerlessPooler(raw: string): string {
 
 const connectionString = toServerlessPooler(process.env.DATABASE_URL!);
 
-// Cap each serverless instance to a single, quickly-released connection.
+// Cold-connect to the pooler is expensive (~1s), so keep the pool SMALL and
+// reuse warm connections rather than spawning many cold ones (measured: 8
+// parallel cold connections were slower than 8 serial queries on one warm
+// connection). A little headroom (3) absorbs occasional concurrency without a
+// cold-connect storm; a longer idle window keeps connections warm between
+// page loads so we don't repay the cold cost on every navigation. The
+// transaction-mode pooler (port 6543) is fine holding these.
 const client = postgres(connectionString, {
   prepare: false,
-  max: 1,
-  idle_timeout: 20,
+  max: 3,
+  idle_timeout: 120,
   connect_timeout: 10,
 });
 

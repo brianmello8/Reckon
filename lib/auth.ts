@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db/client";
 import { users, organizations } from "@/lib/db/schema";
@@ -20,43 +21,53 @@ export type AuthUser = {
 
 /**
  * Returns the current authenticated user and their org, or null if not signed in.
+ *
+ * Wrapped in React `cache()` so it executes at most ONCE per server request,
+ * even though the (app) layout, the per-surface layout, and the page's
+ * requireUser/requireSurface all call it. A single join (not two round-trips)
+ * keeps it to one query per request.
  */
-export async function getCurrentUser(): Promise<AuthUser | null> {
+export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   const { userId: clerkUserId, orgId: clerkOrgId } = await auth();
 
   if (!clerkUserId || !clerkOrgId) return null;
 
-  const org = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.clerkOrgId, clerkOrgId))
-    .limit(1);
-
-  if (!org[0]) return null;
-
-  const user = await db
-    .select()
+  const [row] = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+      surfaces: users.surfaces,
+      orgId: organizations.id,
+      orgName: organizations.name,
+      orgSlug: organizations.slug,
+    })
     .from(users)
+    .innerJoin(organizations, eq(users.orgId, organizations.id))
     .where(
-      and(eq(users.clerkUserId, clerkUserId), eq(users.orgId, org[0].id))
+      and(
+        eq(users.clerkUserId, clerkUserId),
+        eq(organizations.clerkOrgId, clerkOrgId)
+      )
     )
     .limit(1);
 
-  if (!user[0]) return null;
+  if (!row) return null;
 
   return {
-    userId: user[0].id,
-    orgId: org[0].id,
+    userId: row.userId,
+    orgId: row.orgId,
     clerkUserId,
     clerkOrgId,
-    email: user[0].email,
-    name: user[0].name,
-    role: user[0].role,
-    surfaces: (user[0].surfaces ?? ["operations"]) as Surface[],
-    orgName: org[0].name,
-    orgSlug: org[0].slug,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    surfaces: (row.surfaces ?? ["operations"]) as Surface[],
+    orgName: row.orgName,
+    orgSlug: row.orgSlug,
   };
-}
+});
 
 /** Whether the user can access a given surface (admins always can). */
 export function hasSurface(user: AuthUser, surface: Surface): boolean {
