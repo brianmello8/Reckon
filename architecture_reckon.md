@@ -234,6 +234,21 @@ Cross-source precedence: the observability upsert fills `workflow_id`/`workflow_
 
 ---
 
+## 3d. Finance dimensions
+
+The first piece of the Finance tier (Phase 9.1) is **master data**: the dimensions every dollar rolls up to, so spend becomes finance-readable. This prompt adds the master tables and CRUD only — the *allocation* of usage to these dimensions is a separate, derived, recomputable table (Prompt 9.2), never a mutation of `usage_events`.
+
+Five org-scoped tables, each with the standard RLS policy and a unique `(org_id, code)`:
+
+- **`cost_centers`** — `code`, `name`, `parent_id` (self-FK), `owner_ref`, `status`. `parent_id` gives a **hierarchy for rollups** (developer → team → cost center → department); the dimensions UI renders the tree from `parent_id`.
+- **`gl_accounts`** — `code`, `name`, `account_type` (`cogs | opex_rnd | opex_ga | opex_sm | other`), `status`. `account_type` is what makes COGS-vs-opex visible at a glance later (margin, accruals).
+- **`projects`**, **`product_lines`** — `code`, `name`, `status`.
+- **`entities`** — `code`, `name`, `functional_currency` (ISO 4217), `status`. Entity currency feeds period/FX handling downstream; Reckon tags entity-level splits and lets the ERP do the journal/FX (we never compute tax).
+
+All carry a `status` enum (`active | archived`); the UI archives rather than hard-deletes so historical allocations keep their references. Admin CRUD lives under the Finance surface at `/finance/dimensions` (a tab per dimension; cost centers as a tree). **Rollup intent:** spend is aggregated up the `cost_centers` tree and grouped by `gl_accounts.account_type` in the showback views (Prompt 9.4).
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:

@@ -14,6 +14,7 @@ import {
   Activity,
   Workflow,
   Landmark,
+  FolderTree,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -25,6 +26,7 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
   badge?: boolean;
+  exact?: boolean; // active only on exact match (for prefix-overlapping routes)
 };
 
 const SURFACE_NAV: Record<Surface, NavItem[]> = {
@@ -37,7 +39,10 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
     { href: "/integrations", label: "Integrations", icon: Plug },
   ],
   workflows: [{ href: "/workflows", label: "Workflows", icon: Workflow }],
-  finance: [{ href: "/finance", label: "Finance", icon: Landmark }],
+  finance: [
+    { href: "/finance", label: "Finance", icon: Landmark, exact: true },
+    { href: "/finance/dimensions", label: "Dimensions", icon: FolderTree },
+  ],
 };
 
 export function Sidebar({
@@ -66,7 +71,9 @@ export function Sidebar({
   ];
 
   const renderItem = (item: NavItem) => {
-    const active = pathname.startsWith(item.href);
+    const active = item.exact
+      ? pathname === item.href
+      : pathname.startsWith(item.href);
     const Icon = item.icon;
     return (
       <Link

@@ -10,6 +10,7 @@ import {
   date,
   jsonb,
   customType,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -81,6 +82,18 @@ export const observabilityConnectionStatusEnum = pgEnum(
   "observability_connection_status",
   ["active", "error", "disabled"]
 );
+// Finance dimensions (Phase 9.1)
+export const dimensionStatusEnum = pgEnum("dimension_status", [
+  "active",
+  "archived",
+]);
+export const glAccountTypeEnum = pgEnum("gl_account_type", [
+  "cogs",
+  "opex_rnd",
+  "opex_ga",
+  "opex_sm",
+  "other",
+]);
 
 // --- Tables ---
 
@@ -446,6 +459,120 @@ export const observabilityConnections = pgTable(
   (t) => [index("idx_observability_connections_org").on(t.orgId)]
 );
 
+// --- Finance dimensions (Phase 9.1, architecture §3d) ---
+// Master data only — every dollar of spend rolls up to these. Allocation
+// (mapping usage to dimensions) is a separate derived table (Prompt 9.2).
+// All org-scoped with the standard RLS policy; codes are unique per org.
+
+export const costCenters = pgTable(
+  "cost_centers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    // Self-FK for hierarchy/rollups (developer → team → cost center → dept).
+    parentId: uuid("parent_id").references((): AnyPgColumn => costCenters.id),
+    ownerRef: text("owner_ref"),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_cost_centers_org_code").on(t.orgId, t.code),
+    index("idx_cost_centers_parent").on(t.parentId),
+  ]
+);
+
+export const glAccounts = pgTable(
+  "gl_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    accountType: glAccountTypeEnum("account_type").notNull(),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_gl_accounts_org_code").on(t.orgId, t.code)]
+);
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_projects_org_code").on(t.orgId, t.code)]
+);
+
+export const entities = pgTable(
+  "entities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    // ISO 4217 functional currency (e.g. USD, EUR).
+    functionalCurrency: text("functional_currency").notNull().default("USD"),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_entities_org_code").on(t.orgId, t.code)]
+);
+
+export const productLines = pgTable(
+  "product_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    status: dimensionStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_product_lines_org_code").on(t.orgId, t.code)]
+);
+
 export const anomalies = pgTable(
   "anomalies",
   {
@@ -711,6 +838,22 @@ export const observabilityConnectionsRelations = relations(
       fields: [observabilityConnections.orgId],
       references: [organizations.id],
     }),
+  })
+);
+
+export const costCentersRelations = relations(
+  costCenters,
+  ({ one, many }) => ({
+    organization: one(organizations, {
+      fields: [costCenters.orgId],
+      references: [organizations.id],
+    }),
+    parent: one(costCenters, {
+      fields: [costCenters.parentId],
+      references: [costCenters.id],
+      relationName: "cost_center_parent",
+    }),
+    children: many(costCenters, { relationName: "cost_center_parent" }),
   })
 );
 
