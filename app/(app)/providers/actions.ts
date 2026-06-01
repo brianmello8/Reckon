@@ -20,6 +20,7 @@ import { encryptSecret, keyFingerprint } from "@/lib/encryption/envelope";
 import { getProviderClient } from "@/lib/providers/registry";
 import { ProviderAuthError } from "@/lib/providers/errors";
 import { assignIdentityToDeveloper } from "@/lib/providers/identities";
+import { getAgentAttributionCoverage } from "@/lib/attribution/coverage";
 import { subDays, format } from "date-fns";
 import { PLAN_LIMITS, PlanLimitError } from "@/lib/plans/limits";
 
@@ -417,6 +418,13 @@ export async function assignDeveloperToAgent(formData: FormData) {
   revalidatePath(`/developers/${parsed.developerId}`);
   revalidatePath("/providers");
   return { success: true };
+}
+
+/** Agent-attribution coverage for the last 30 days (ROI honesty). */
+export async function getAttributionCoverage() {
+  const user = await requireUser();
+  const since = format(subDays(new Date(), 30), "yyyy-MM-dd");
+  return getAgentAttributionCoverage(user.orgId, since);
 }
 
 /** Manual "recompute attribution" action for the whole org. */

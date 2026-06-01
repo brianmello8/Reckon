@@ -201,6 +201,8 @@ The first agent-attribution source is a pure mapping, no new data feeds. It is a
 
 **Derivation source.** These rows are written with a single per-org `attribution_sources` row of `source_type = key_mapping` and `confidence = exact`, `workflow_id = NULL`.
 
+**ROI honesty — never hide unattributed spend.** Because agent ROI depends on a complete cost denominator, unattributed spend is surfaced, never silently dropped. `lib/attribution/coverage.ts` reports, for a period, total vs agent-attributed spend and the unattributed remainder; the Providers page shows "agent attribution coverage · 30d" and the dollars not attributed to any agent. A shared key that can't be split at the identity level lands in this unattributed bucket until observability attribution (Prompt 8.3) can split it by `workflow_run`. We never guess a split to make coverage look higher.
+
 **Two write paths, both in `lib/attribution/key-mapping.ts`:**
 - *Inline at ingest* — the ingestion worker (`lib/jobs/ingest-provider-key.ts`) resolves the agent for each upserted event and writes its `usage_attribution` row when (and only when) a mapping applies. Additive: no mapping → no row, and ingestion behaves exactly as before.
 - *Recompute* — `recomputeOrgKeyMappingAttribution(orgId)` does the §3a delete+reinsert for the whole org: delete the org's `key_mapping` rows, then reinsert one per event that resolves to an agent. Idempotent (re-running yields identical counts; guaranteed by the unique `(org_id, usage_event_id)` index). It runs in the `recompute-attribution` Inngest job, fired whenever an identity→agent or developer→agent mapping changes and from the manual "Recompute attribution" action on the Providers page.

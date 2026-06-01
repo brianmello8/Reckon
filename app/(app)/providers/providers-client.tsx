@@ -43,6 +43,12 @@ type ProviderRow = {
 };
 type DevRow = { id: string; displayName: string };
 type AgentRow = { id: string; name: string; status: "active" | "archived" };
+type Coverage = {
+  totalMicros: string;
+  attributedMicros: string;
+  unattributedMicros: string;
+  coveragePct: number;
+};
 type IdentityRow = {
   id: string;
   providerId: string;
@@ -59,11 +65,13 @@ export function ProvidersClient({
   developers,
   identities,
   agents,
+  coverage,
 }: {
   providers: ProviderRow[];
   developers: DevRow[];
   identities: IdentityRow[];
   agents: AgentRow[];
+  coverage: Coverage;
 }) {
   return (
     <div className="space-y-8">
@@ -77,6 +85,7 @@ export function ProvidersClient({
         identities={identities}
         developers={developers}
         agents={agents}
+        coverage={coverage}
       />
     </div>
   );
@@ -223,10 +232,12 @@ function IdentityMapping({
   identities,
   developers,
   agents,
+  coverage,
 }: {
   identities: IdentityRow[];
   developers: DevRow[];
   agents: AgentRow[];
+  coverage: Coverage;
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = React.useState<string | null>(null);
@@ -322,6 +333,7 @@ function IdentityMapping({
           {recomputing ? "Recomputing…" : "Recompute attribution"}
         </Button>
       </div>
+      <CoverageBanner coverage={coverage} />
       <div className="mt-4 overflow-hidden rounded-xl border border-line bg-paper">
         <table className="w-full text-sm">
           <thead className="border-b border-line bg-bg-2 text-left text-[12px] text-ink-3">
@@ -382,6 +394,36 @@ function IdentityMapping({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function CoverageBanner({ coverage }: { coverage: Coverage }) {
+  const total = Number(coverage.totalMicros);
+  if (total <= 0) return null;
+
+  const unattributed = Number(coverage.unattributedMicros);
+  const pct = coverage.coveragePct;
+  // Below 100% there is spend not attributed to any agent — surface it so ROI
+  // figures are never quietly understated. Shared keys land here until 8.3.
+  const fullyCovered = unattributed <= 0;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+      <span className="text-ink-2">
+        Agent attribution coverage · 30d:{" "}
+        <span className="font-medium text-ink">{pct.toFixed(1)}%</span>
+      </span>
+      {!fullyCovered && (
+        <span className="text-ink-3">
+          ·{" "}
+          <span className="font-medium text-ink-2">
+            {fmtMoney(microsToDollars(unattributed))}
+          </span>{" "}
+          not attributed to any agent (map identities above, or connect
+          observability for shared keys)
+        </span>
+      )}
     </div>
   );
 }

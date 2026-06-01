@@ -6,7 +6,11 @@ import { eq, and, desc } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { IngestNowButton } from "./ingest-button";
 import { ProvidersClient } from "./providers-client";
-import { getProviderIdentities, getAgents } from "./actions";
+import {
+  getProviderIdentities,
+  getAgents,
+  getAttributionCoverage,
+} from "./actions";
 
 const PROVIDER_DOCS: Record<string, { docUrl: string; description: string }> = {
   anthropic: {
@@ -39,7 +43,7 @@ export default async function ProvidersPage() {
     .from(providers)
     .orderBy(providers.displayName);
 
-  const [keys, devs, identities, agentsList] = await Promise.all([
+  const [keys, devs, identities, agentsList, coverage] = await Promise.all([
     withOrgContext(user.orgId, async (tx) =>
       tx
         .select({
@@ -66,6 +70,7 @@ export default async function ProvidersPage() {
     ),
     getProviderIdentities(),
     getAgents(),
+    getAttributionCoverage(),
   ]);
 
   const keyByProvider = new Map(keys.map((k) => [k.providerId, k]));
@@ -99,6 +104,7 @@ export default async function ProvidersPage() {
         developers={devs}
         identities={identities}
         agents={agentsList}
+        coverage={coverage}
       />
     </div>
   );
