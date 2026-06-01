@@ -133,6 +133,12 @@ export const rateSnapshotSourceEnum = pgEnum("rate_snapshot_source", [
   "provider_published",
   "manual",
 ]);
+// Accounting periods (Phase 11.1)
+export const accountingPeriodStatusEnum = pgEnum("accounting_period_status", [
+  "open",
+  "closed",
+  "locked",
+]);
 // Commitments & prepaid credits (Phase 10.4)
 export const commitmentTypeEnum = pgEnum("commitment_type", [
   "committed_use",
@@ -186,6 +192,10 @@ export const organizations = pgTable("organizations", {
   // Optional cost center that shared-cost split rounding residual lands on
   // (Phase 9.3). When unset, residual is distributed by largest-remainder.
   roundingCostCenterId: uuid("rounding_cost_center_id"),
+  // Reporting timezone for accounting-period cutoff (Phase 11.1). Distinct from
+  // digest_timezone (a notification preference). Resolution: entity TZ → this →
+  // digest_timezone. Nullable; falls back to digest_timezone when unset.
+  reportingTimezone: text("reporting_timezone"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -616,6 +626,8 @@ export const entities = pgTable(
     name: text("name").notNull(),
     // ISO 4217 functional currency (e.g. USD, EUR).
     functionalCurrency: text("functional_currency").notNull().default("USD"),
+    // IANA reporting timezone for accounting cutoff (Phase 11.1); null → org's.
+    reportingTimezone: text("reporting_timezone"),
     status: dimensionStatusEnum("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -848,6 +860,34 @@ export const forecastSnapshots = pgTable(
       t.period,
       t.snapshotDate
     ),
+  ]
+);
+
+// Accounting periods + cutoff (Phase 11.1, architecture §6). entity_id null =
+// org-wide period. Closing/locking is a state change; what it gates (no posting
+// to closed periods) is enforced in Phase 13.
+export const accountingPeriods = pgTable(
+  "accounting_periods",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    entityId: uuid("entity_id").references(() => entities.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    status: accountingPeriodStatusEnum("status").notNull().default("open"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedByUserId: uuid("closed_by_user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("idx_accounting_periods_org").on(t.orgId, t.periodStart),
   ]
 );
 

@@ -459,6 +459,18 @@ The per-day run-rate is the MTD daily mean, **optionally split weekday vs weeken
 
 ---
 
+## 5d. Close — accounting periods & cutoff (Phase 11.1)
+
+`accounting_periods(entity_id?, period_start, period_end, status open|closed|locked)` model the close calendar (`entity_id` null = org-wide). Closing/locking is a state change here; what it *gates* (no posting to closed periods) is enforced in Phase 13. `lib/close/cutoff.ts`.
+
+**Reporting timezone (the cutoff source).** A period's `[period_start, period_end]` are **local calendar dates** in the reporting timezone, resolved **entity → org → digest**: `entities.reporting_timezone` → `organizations.reporting_timezone` → `organizations.digest_timezone`. We never use naive UTC display as the boundary (the classic close bug). Settable per-org and per-entity at `/finance/periods`.
+
+**The boundary.** A period covers the half-open instant range `[local period_start 00:00, local (period_end + 1 day) 00:00)` — **inclusive start, exclusive end, tz-aware** (`periodBoundsUtc` / `timestampInPeriod` via `date-fns-tz`). So a spike at 23:30 local on the last day lands in the period; 00:00 local the next day does not.
+
+**Usage mapping (daily-aggregate caveat).** `usage_events.time_bucket` is a **UTC daily aggregate** — there is no sub-day time, so a UTC bucket can't be split across two local days. Each bucket is assigned to **exactly one** period by the local date of its **noon-UTC** instant (`usageBucketRange`) — a deterministic, **non-overlapping** partition (adjacent periods never double-count a bucket). Boundary buckets therefore carry ≤1-day tz approximation; this is the honest limit of daily-aggregated source data, documented rather than hidden. Timestamp-precise cutoff (the helper above) is correct for any real timestamp and ready for finer-grained data. `getPeriodUsage` is deterministic; entity-scoped periods filter to usage coded to that entity via `cost_allocations`.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid
