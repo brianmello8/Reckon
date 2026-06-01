@@ -5,6 +5,7 @@ const PROVIDERS = [
   { key: "anthropic", displayName: "Anthropic" },
   { key: "openai", displayName: "OpenAI" },
   { key: "github_copilot", displayName: "GitHub Copilot" },
+  { key: "openrouter", displayName: "OpenRouter" },
 ] as const;
 
 async function main() {

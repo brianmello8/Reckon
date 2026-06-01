@@ -24,6 +24,11 @@ const PROVIDER_DOCS: Record<string, { docUrl: string; description: string }> = {
     description:
       "A token with org admin / manage_billing:copilot scope. Attributes the flat per-seat fee to each assigned login. Format: org_name:token.",
   },
+  openrouter: {
+    docUrl: "https://openrouter.ai/docs/features/provisioning-api-keys",
+    description:
+      "Create a Provisioning (management) key under Settings → Keys. Tracks spend across every model routed through OpenRouter, broken down per API key. Works on any plan.",
+  },
 };
 
 export default async function ProvidersPage() {
