@@ -2,6 +2,7 @@ import { inngest } from "./client";
 import { db } from "@/lib/db/client";
 import { anomalies } from "@/lib/db/schema";
 import { detectAnomaliesForOrg } from "@/lib/anomaly/detect";
+import { detectWorkflowAnomaliesForOrg } from "@/lib/anomaly/detect-workflows";
 
 export const detectAnomaliesJob = inngest.createFunction(
   {
@@ -11,9 +12,13 @@ export const detectAnomaliesJob = inngest.createFunction(
   async ({ event, step }) => {
     const { org_id } = event.data as { org_id: string };
 
-    // Step 1: Run detection
+    // Step 1: Run detection — per-developer daily spend + per-workflow cost-per-run
     const newAnomalies = await step.run("detect", async () => {
-      return detectAnomaliesForOrg(org_id);
+      const [devAnomalies, wfAnomalies] = await Promise.all([
+        detectAnomaliesForOrg(org_id),
+        detectWorkflowAnomaliesForOrg(org_id),
+      ]);
+      return [...devAnomalies, ...wfAnomalies];
     });
 
     if (newAnomalies.length === 0) {
@@ -28,7 +33,8 @@ export const detectAnomaliesJob = inngest.createFunction(
           .insert(anomalies)
           .values({
             orgId: a.orgId,
-            developerId: a.developerId,
+            developerId: a.developerId ?? null,
+            workflowId: a.workflowId ?? null,
             kind: a.kind,
             severity: a.severity,
             details: a.details,

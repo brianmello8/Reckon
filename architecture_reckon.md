@@ -397,6 +397,15 @@ flowchart TD
 - An org with fewer than 7 days of history doesn't get anomaly detection (insufficient baseline).
 - Anomalies under $5 absolute change are filtered (don't alert on noise).
 
+### Workflow cost-per-run detector (Phase 8.6)
+
+The same engine also runs over **workflow cost-per-run** — an alert that points at a code path, not a person. For each active workflow it builds a daily series of mean cost-per-run (attributed daily cost ÷ runs started that day) over the trailing 28 days, then reuses the identical thresholding: flag a **spike** when the recent day's mean cost-per-run exceeds `baseline mean + 3·stddev`, or a **sudden increase** when it exceeds `3× baseline mean` (`lib/anomaly/detect-workflows.ts`).
+
+- **Likely cause** is derived from the data and put in the alert: `model_changed` (recent dominant model ≠ baseline), `run_length_grew` (recent tokens-per-run > 1.5× baseline), else `per_call_cost_grew` (same shape, costlier).
+- **Floors** so new/quiet workflows don't alert on noise: ≥7 baseline days with runs, ≥10 baseline runs total, ≥3 runs on the recent day; per-run change must exceed $1.
+- **Storage:** `anomalies.developer_id` is now nullable; a workflow anomaly sets `anomalies.workflow_id` and `kind = workflow_cost_per_run` (exactly one of developer/workflow is set). The per-developer path is unchanged.
+- **Notification:** the Slack builder renders a workflow-named message (before/after cost-per-run, likely cause, link to the workflow detail page); critical severity files a workflow-focused Linear issue. The existing per-developer Slack/Linear path is untouched. The per-developer anomalies list excludes workflow anomalies (its inner join requires a developer), so existing in-app behavior is unchanged.
+
 ---
 
 ## 8. Data flow: Daily digest

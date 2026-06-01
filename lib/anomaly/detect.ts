@@ -20,8 +20,13 @@ import { subHours, subDays, format } from "date-fns";
 
 export type NewAnomaly = {
   orgId: string;
-  developerId: string;
-  kind: "spike" | "sudden_increase" | "sustained_increase";
+  developerId?: string | null;
+  workflowId?: string | null;
+  kind:
+    | "spike"
+    | "sudden_increase"
+    | "sustained_increase"
+    | "workflow_cost_per_run";
   severity: "info" | "warn" | "critical";
   details: Record<string, unknown>;
 };

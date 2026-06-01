@@ -1,10 +1,19 @@
 import { inngest } from "./client";
 import { db } from "@/lib/db/client";
-import { anomalies, developers, organizations, users } from "@/lib/db/schema";
+import {
+  anomalies,
+  developers,
+  workflows,
+  organizations,
+  users,
+} from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { format } from "date-fns";
 import { getSlackClient } from "@/lib/slack/client";
-import { buildAnomalyBlocks } from "@/lib/slack/messages/anomaly";
+import {
+  buildAnomalyBlocks,
+  buildWorkflowAnomalyBlocks,
+} from "@/lib/slack/messages/anomaly";
 import { PLAN_LIMITS } from "@/lib/plans/limits";
 
 export const notifyAnomaly = inngest.createFunction(
@@ -25,11 +34,25 @@ export const notifyAnomaly = inngest.createFunction(
 
       if (!anomaly) return null;
 
-      const [developer] = await db
-        .select({ displayName: developers.displayName })
-        .from(developers)
-        .where(eq(developers.id, anomaly.developerId))
-        .limit(1);
+      const developer = anomaly.developerId
+        ? (
+            await db
+              .select({ displayName: developers.displayName })
+              .from(developers)
+              .where(eq(developers.id, anomaly.developerId))
+              .limit(1)
+          )[0]
+        : undefined;
+
+      const workflow = anomaly.workflowId
+        ? (
+            await db
+              .select({ name: workflows.name })
+              .from(workflows)
+              .where(eq(workflows.id, anomaly.workflowId))
+              .limit(1)
+          )[0]
+        : undefined;
 
       const [org] = await db
         .select({
@@ -46,6 +69,7 @@ export const notifyAnomaly = inngest.createFunction(
           detectedAt: anomaly.detectedAt.toISOString(),
         },
         developerName: developer?.displayName ?? "Unknown",
+        workflowName: workflow?.name ?? null,
         orgName: org?.name ?? "Unknown",
         channelId: org?.digestSlackChannelId ?? null,
       };
@@ -61,23 +85,43 @@ export const notifyAnomaly = inngest.createFunction(
       if (!client) return { posted: false, reason: "no_slack_client" };
 
       const details = data.anomaly.details as Record<string, unknown> | null;
-      const amountMicros = Number(details?.dailyCostMicros ?? 0);
       const multiple = Number(details?.multiple ?? 0);
-      const trailingAvg = Number(
-        details?.trailing7dayAvgMicros ?? details?.meanDailyMicros ?? 0
-      );
 
-      const { blocks, text } = buildAnomalyBlocks({
-        anomalyId: data.anomaly.id,
-        developerName: data.developerName,
-        severity: data.anomaly.severity,
-        kind: data.anomaly.kind,
-        amountMicros,
-        multiple,
-        trailing7dayAvgMicros: trailingAvg,
-        detectedAt: format(new Date(data.anomaly.detectedAt), "MMM d, h:mm a"),
-        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/anomalies`,
-      });
+      // Workflow anomalies render a workflow-focused message; per-developer
+      // anomalies keep the original block builder.
+      const isWorkflow = !!data.anomaly.workflowId;
+      const { blocks, text } = isWorkflow
+        ? buildWorkflowAnomalyBlocks({
+            anomalyId: data.anomaly.id,
+            workflowName: data.workflowName ?? "Unknown workflow",
+            severity: data.anomaly.severity,
+            baselineMicros: Number(details?.baselineMeanCostPerRunMicros ?? 0),
+            recentMicros: Number(details?.recentMeanCostPerRunMicros ?? 0),
+            multiple,
+            likelyCause: String(details?.likelyCause ?? "per_call_cost_grew"),
+            recentRunCount: Number(details?.recentRunCount ?? 0),
+            detectedAt: format(
+              new Date(data.anomaly.detectedAt),
+              "MMM d, h:mm a"
+            ),
+            workflowUrl: `${process.env.NEXT_PUBLIC_APP_URL}/workflows/${data.anomaly.workflowId}`,
+          })
+        : buildAnomalyBlocks({
+            anomalyId: data.anomaly.id,
+            developerName: data.developerName,
+            severity: data.anomaly.severity,
+            kind: data.anomaly.kind,
+            amountMicros: Number(details?.dailyCostMicros ?? 0),
+            multiple,
+            trailing7dayAvgMicros: Number(
+              details?.trailing7dayAvgMicros ?? details?.meanDailyMicros ?? 0
+            ),
+            detectedAt: format(
+              new Date(data.anomaly.detectedAt),
+              "MMM d, h:mm a"
+            ),
+            dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/anomalies`,
+          });
 
       // For critical severity, @-mention admins
       let mentionText = "";
@@ -152,19 +196,35 @@ export const notifyAnomaly = inngest.createFunction(
           if (!linearClient) return { created: false, reason: "no_linear" };
 
           const details = data.anomaly.details as Record<string, unknown> | null;
-          const amountDollars = (Number(details?.dailyCostMicros ?? 0) / 1_000_000).toFixed(2);
+          const dollars = (m: number) => (m / 1_000_000).toFixed(2);
+
+          const issueInput = data.anomaly.workflowId
+            ? {
+                title: `Workflow cost-per-run anomaly: ${data.workflowName} — ${details?.multiple ?? "?"}x`,
+                description: [
+                  `Workflow **${data.workflowName}** cost $${dollars(Number(details?.recentMeanCostPerRunMicros ?? 0))}/run yesterday — ${details?.multiple ?? "?"}x its baseline of $${dollars(Number(details?.baselineMeanCostPerRunMicros ?? 0))}/run.`,
+                  "",
+                  `Likely cause: ${details?.likelyCause ?? "unknown"}`,
+                  `Severity: ${data.anomaly.severity}`,
+                  "",
+                  `[View workflow](${process.env.NEXT_PUBLIC_APP_URL}/workflows/${data.anomaly.workflowId})`,
+                ].join("\n"),
+              }
+            : {
+                title: `AI spend anomaly: ${data.developerName} — $${dollars(Number(details?.dailyCostMicros ?? 0))}`,
+                description: [
+                  `**${data.developerName}** spent $${dollars(Number(details?.dailyCostMicros ?? 0))} yesterday — ${details?.multiple ?? "?"}x their trailing average.`,
+                  "",
+                  `Severity: ${data.anomaly.severity}`,
+                  `Kind: ${data.anomaly.kind}`,
+                  "",
+                  `[View in Reckon](${process.env.NEXT_PUBLIC_APP_URL}/anomalies)`,
+                ].join("\n"),
+              };
 
           const issue = await linearClient.createIssue({
             teamId: org.linearTeamId,
-            title: `AI spend anomaly: ${data.developerName} — $${amountDollars}`,
-            description: [
-              `**${data.developerName}** spent $${amountDollars} yesterday — ${details?.multiple ?? "?"}x their trailing average.`,
-              "",
-              `Severity: ${data.anomaly.severity}`,
-              `Kind: ${data.anomaly.kind}`,
-              "",
-              `[View in Reckon](${process.env.NEXT_PUBLIC_APP_URL}/anomalies)`,
-            ].join("\n"),
+            ...issueInput,
             priority: 1, // Urgent
           });
 

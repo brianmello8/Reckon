@@ -21,3 +21,14 @@ export const DEDUP_WINDOW_HOURS = 24;
 export const SEVERITY_INFO_MAX = 5; // 3-5x = info
 export const SEVERITY_WARN_MAX = 10; // 5-10x = warn
 // >10x = critical
+
+// --- Workflow cost-per-run detector (Phase 8.6) ---
+// Reuses the same thresholding approach (spike: mean + N·stddev; sudden: N×
+// baseline) applied to per-run cost instead of per-developer daily spend.
+
+/** Minimum total runs in the baseline window before a workflow can alert. */
+export const MIN_WORKFLOW_BASELINE_RUNS = 10;
+/** Minimum runs in the recent day before it can alert (kills single-run noise). */
+export const MIN_WORKFLOW_RECENT_RUNS = 3;
+/** Don't alert on per-run cost changes below this absolute amount (micros). */
+export const MIN_WORKFLOW_ABS_CHANGE_MICROS = 1_000_000; // $1 / run

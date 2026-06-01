@@ -41,6 +41,8 @@ export const anomalyKindEnum = pgEnum("anomaly_kind", [
   "spike",
   "sudden_increase",
   "sustained_increase",
+  // Workflow-level (Phase 8.6): cost-per-run deviated from baseline.
+  "workflow_cost_per_run",
 ]);
 export const anomalySeverityEnum = pgEnum("anomaly_severity", [
   "info",
@@ -451,9 +453,10 @@ export const anomalies = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id),
-    developerId: uuid("developer_id")
-      .notNull()
-      .references(() => developers.id),
+    // Nullable: a per-developer anomaly sets developer_id; a workflow-level
+    // anomaly (Phase 8.6) sets workflow_id instead. Exactly one is set.
+    developerId: uuid("developer_id").references(() => developers.id),
+    workflowId: uuid("workflow_id").references(() => workflows.id),
     kind: anomalyKindEnum("kind").notNull(),
     severity: anomalySeverityEnum("severity").notNull(),
     details: jsonb("details"),
@@ -719,6 +722,10 @@ export const anomaliesRelations = relations(anomalies, ({ one }) => ({
   developer: one(developers, {
     fields: [anomalies.developerId],
     references: [developers.id],
+  }),
+  workflow: one(workflows, {
+    fields: [anomalies.workflowId],
+    references: [workflows.id],
   }),
   acknowledgedBy: one(users, {
     fields: [anomalies.acknowledgedByUserId],

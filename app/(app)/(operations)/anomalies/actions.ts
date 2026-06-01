@@ -21,7 +21,9 @@ export async function getAnomalies(filter: "all" | "unacknowledged" | "acknowled
     return tx
       .select({
         id: anomalies.id,
-        developerId: anomalies.developerId,
+        // developers.id is non-null via the inner join (anomalies.developerId
+        // is now nullable for workflow anomalies, which this list excludes).
+        developerId: developers.id,
         developerName: developers.displayName,
         kind: anomalies.kind,
         severity: anomalies.severity,
