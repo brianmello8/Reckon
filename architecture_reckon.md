@@ -407,6 +407,28 @@ Invoice capture is the input to reconciliation (Phase 10.2). Two ingest paths no
 
 ---
 
+## 5b. Invoice ↔ usage reconciliation (Phase 10.2 — the crown jewel)
+
+For an invoice's billing period, compare the provider's billed total to Reckon's observed usage and explain every dollar of the delta. `lib/reconciliation/reconcile.ts`; `computeReconciliation` is a **pure** classifier (exhaustively unit-tested), `reconcileInvoice` does the I/O. The headline rule: a fully-explained waterfall must also be a **correctly**-explained one — conservation is necessary but not sufficient; an honest `unknown` beats a forced explanation.
+
+**Period membership (timestamp rule).** An event belongs to the period by its **provider usage timestamp** (`usage_events.time_bucket`, the provider-reported day), **not** our ingest time. This is the difference between a real delta and a boundary artifact.
+
+**Residual-based classification — no double-claim.** `delta = billed − observed`; `remaining = delta`. Each bucket is sized from its **own evidence** and subtracted from `remaining`, so no later bucket re-claims an explained dollar and a first match never absorbs the whole delta. Buckets:
+- `tax` (= invoice tax), `credits` (= −credits_applied, a landed credit), `untracked_keys` (billed for models with **zero** observed usage — a blind spot), `price_change` (per observed rate-checkable line: `billed − expectedRate×qty`), `rounding`, `unknown`.
+- The **delta-decomposing** buckets sum to delta **exactly**. `missing_credit` is **ADVISORY** and excluded from the conservation sum: an owed-but-absent credit isn't part of `billed − observed` (that's precisely why it's dangerous), so it's flagged separately with the shortfall + a dispute action. `conservationSum()` sums non-advisory buckets and must equal delta.
+
+**Currency.** We never convert. A currency mismatch (`invoice.currency ≠ USD`) short-circuits to a single `fx` discrepancy for the whole delta (documented deviation from the listed bucket order, since cross-currency can't be decomposed without rates we don't hold).
+
+**Rounding threshold.** `max($1, 0.1% of billed_total)`. A residual **above** the threshold may **not** be rounding — it becomes `unknown`. Rationale: real rounding is sub-dollar/sub-permille; anything larger is a genuine unexplained difference that must be surfaced.
+
+**Expected-rate provenance + staleness.** Rates resolve as-of `periodStart` from `provider_rate_snapshots` (§5a). `rate_ref_as_of` (the resolved baseline's `effective_from`) is recorded on the reconciliation. If the baseline **predates `periodStart`** (we have no snapshot captured within the period), `price_change` is flagged **low-confidence** rather than asserting a pricing error; a missing baseline is also low-confidence. A lump-sum invoice (`rate_checkable = false`) makes `price_change` uncomputable — its residual flows to `unknown`, never guessed.
+
+**Expected credits.** Sourced from the invoice's `expected_credits` (manual in 10.1; commitments in Phase 12). `NULL` → the missing-credit check is **skipped** (unknown ≠ zero).
+
+**Late usage / recompute.** `observed_through` records the latest usage ingest time (`updatedAt`) included. If in-period usage is ingested after `computed_at`, the reconciliation is out of date: `refreshReconciliation` **recomputes in place** for `open`/`explained`, but for `accepted`/`disputed` sets `status = stale` and surfaces it for human re-review — a controller's acceptance is a financial conclusion, never silently overwritten. Explicit user recompute (`reconcileInvoice`) is always allowed.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

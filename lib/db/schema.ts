@@ -133,6 +133,24 @@ export const rateSnapshotSourceEnum = pgEnum("rate_snapshot_source", [
   "provider_published",
   "manual",
 ]);
+// Reconciliation (Phase 10.2)
+export const reconciliationStatusEnum = pgEnum("reconciliation_status", [
+  "open",
+  "explained",
+  "accepted",
+  "disputed",
+  "stale",
+]);
+export const discrepancyTypeEnum = pgEnum("discrepancy_type", [
+  "untracked_keys",
+  "credits",
+  "missing_credit",
+  "tax",
+  "fx",
+  "price_change",
+  "rounding",
+  "unknown",
+]);
 
 // --- Tables ---
 
@@ -783,6 +801,57 @@ export const providerRateSnapshots = pgTable(
       t.unit,
       t.effectiveFrom
     ),
+  ]
+);
+
+// Invoice ↔ usage reconciliation (Phase 10.2, architecture §5a).
+export const reconciliations = pgTable(
+  "reconciliations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => providerInvoices.id),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    billedTotal: bigint("billed_total", { mode: "bigint" }).notNull(),
+    observedTotal: bigint("observed_total", { mode: "bigint" }).notNull(),
+    delta: bigint("delta", { mode: "bigint" }).notNull(),
+    status: reconciliationStatusEnum("status").notNull().default("open"),
+    // Watermark: latest usage ingestion time included in observed_total.
+    observedThrough: timestamp("observed_through", { withTimezone: true }),
+    // As-of date of the rate reference used for price_change (null if none).
+    rateRefAsOf: date("rate_ref_as_of"),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_reconciliations_invoice").on(t.orgId, t.invoiceId)]
+);
+
+export const reconciliationDiscrepancies = pgTable(
+  "reconciliation_discrepancies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    reconciliationId: uuid("reconciliation_id")
+      .notNull()
+      .references(() => reconciliations.id),
+    type: discrepancyTypeEnum("type").notNull(),
+    amount: bigint("amount", { mode: "bigint" }).notNull(),
+    detail: jsonb("detail"),
+    suggestedAction: text("suggested_action"),
+  },
+  (t) => [
+    index("idx_recon_discrepancies_recon").on(t.orgId, t.reconciliationId),
   ]
 );
 
