@@ -21,6 +21,10 @@ import {
   cronMonthlyInvoices,
   syncInvoicesForOrg,
 } from "@/lib/jobs/sync-invoices";
+import {
+  cronCommitmentAlerts,
+  commitmentAlertsForOrg,
+} from "@/lib/jobs/commitment-alerts";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -31,6 +35,8 @@ export const { GET, POST, PUT } = serve({
     recomputeAllocations,
     cronMonthlyInvoices,
     syncInvoicesForOrg,
+    cronCommitmentAlerts,
+    commitmentAlertsForOrg,
     helloWorld,
     ingestProviderKey,
     orchestrateIngestion,

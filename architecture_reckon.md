@@ -331,6 +331,21 @@ The app is split into three **surfaces** over one shared data spine (Phase 8.5),
 
 ---
 
+## 4b. Commitments & prepaid credits (Phase 10.4)
+
+Track committed-use deals, enterprise agreements, and prepaid credits — money finance usually can't see until it's wasted. `commitments(provider, type, amount, start/end, effective_rate?, status)`; org-scoped, RLS.
+
+**Drawdown** (`lib/commitments/drawdown.ts`, pure `computeCommitment` + DB loader). Consumed-to-date = observed usage cost for the provider within the term (by provider usage timestamp). The end-of-term position is projected from the **term-to-date daily run-rate** (`consumed / daysElapsed × daysRemaining`, the same simple/explainable method as the invoice forecast). The UI shows the cumulative drawdown curve against the commitment line.
+
+**Alerts** (each states the dollars at risk and the relevant date):
+- `overage` — projected end > commitment (unplanned cash at list rate).
+- `under_utilization` — projected end < commitment (committed spend left unused).
+- `expiry` — a `prepaid_credit` with a remaining balance within 30 days of its end date.
+
+Alerts under $1 are suppressed. A weekly Inngest sweep (`cron-commitment-alerts` → `commitment/alerts.requested`) posts the top-priority alert (overage > expiry > under_utilization) to Slack and, on Pro, files a Linear issue — **deduped** via `last_alert_kind`/`last_alerted_at` (same kind not re-sent within 14 days). Alerting only; no money moves. `effective_rate` (negotiated $/1M units) displays when provided.
+
+---
+
 ## 5. Security architecture
 
 ### Provider key lifecycle

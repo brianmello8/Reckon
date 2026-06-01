@@ -133,6 +133,17 @@ export const rateSnapshotSourceEnum = pgEnum("rate_snapshot_source", [
   "provider_published",
   "manual",
 ]);
+// Commitments & prepaid credits (Phase 10.4)
+export const commitmentTypeEnum = pgEnum("commitment_type", [
+  "committed_use",
+  "prepaid_credit",
+  "enterprise_agreement",
+]);
+export const commitmentStatusEnum = pgEnum("commitment_status", [
+  "active",
+  "expired",
+  "exhausted",
+]);
 // Reconciliation (Phase 10.2)
 export const reconciliationStatusEnum = pgEnum("reconciliation_status", [
   "open",
@@ -838,6 +849,37 @@ export const forecastSnapshots = pgTable(
       t.snapshotDate
     ),
   ]
+);
+
+// Provider commitments / prepaid credits (Phase 10.4, architecture §4b).
+export const commitments = pgTable(
+  "commitments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    provider: text("provider").notNull(),
+    type: commitmentTypeEnum("type").notNull(),
+    amount: bigint("amount", { mode: "bigint" }).notNull(), // micros
+    currency: text("currency").notNull().default("USD"),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    // Negotiated effective rate vs list (micros per 1,000,000 units), if known.
+    effectiveRate: bigint("effective_rate", { mode: "bigint" }),
+    notes: text("notes"),
+    status: commitmentStatusEnum("status").notNull().default("active"),
+    // Dedup for alerts: don't re-send the same alert kind repeatedly.
+    lastAlertKind: text("last_alert_kind"),
+    lastAlertedAt: timestamp("last_alerted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_commitments_org").on(t.orgId)]
 );
 
 // Invoice ↔ usage reconciliation (Phase 10.2, architecture §5a).
