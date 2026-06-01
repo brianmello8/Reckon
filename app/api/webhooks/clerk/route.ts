@@ -67,6 +67,11 @@ export async function POST(req: Request) {
       if (!org[0]) break;
 
       const mappedRole = role === "org:admin" ? "admin" : "member";
+      // Admins get all surfaces; members default to operations only.
+      const surfaces: ("operations" | "workflows" | "finance")[] =
+        mappedRole === "admin"
+          ? ["operations", "workflows", "finance"]
+          : ["operations"];
 
       await db
         .insert(users)
@@ -79,6 +84,7 @@ export async function POST(req: Request) {
               .filter(Boolean)
               .join(" ") || "Unknown",
           role: mappedRole as "admin" | "member",
+          surfaces,
         })
         .onConflictDoNothing();
       break;

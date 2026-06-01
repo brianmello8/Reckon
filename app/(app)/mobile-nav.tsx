@@ -9,8 +9,17 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
+import type { Surface } from "@/lib/auth";
 
-export function MobileNav({ unackCount = 0 }: { unackCount?: number }) {
+export function MobileNav({
+  unackCount = 0,
+  surfaces = ["operations"],
+  isAdmin = false,
+}: {
+  unackCount?: number;
+  surfaces?: Surface[];
+  isAdmin?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -21,7 +30,12 @@ export function MobileNav({ unackCount = 0 }: { unackCount?: number }) {
       </SheetTrigger>
       <SheetContent side="left" className="w-[232px] p-0">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
-        <Sidebar className="flex h-full" unackCount={unackCount} />
+        <Sidebar
+          className="flex h-full"
+          unackCount={unackCount}
+          surfaces={surfaces}
+          isAdmin={isAdmin}
+        />
       </SheetContent>
     </Sheet>
   );

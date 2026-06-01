@@ -10,7 +10,7 @@ import {
   Plug,
   ArrowLeft,
 } from "lucide-react";
-import { DashboardClient } from "@/app/(app)/dashboard/dashboard-client";
+import { DashboardClient } from "@/app/(app)/(operations)/dashboard/dashboard-client";
 import { MOCK } from "@/lib/reckon/mock";
 import { Logo, Avatar, SeverityBadge, ShareBar } from "@/components/reckon/primitives";
 import { ThemeToggle } from "@/components/reckon/theme-toggle";

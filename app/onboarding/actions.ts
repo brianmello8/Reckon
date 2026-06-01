@@ -85,6 +85,7 @@ export async function ensureOrgRow(input: {
         [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
         "Unknown",
       role: "admin",
+      surfaces: ["operations", "workflows", "finance"],
     })
     .onConflictDoNothing();
 

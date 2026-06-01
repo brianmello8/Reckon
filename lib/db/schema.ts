@@ -25,6 +25,13 @@ const bytea = customType<{ data: Buffer }>({
 
 export const planEnum = pgEnum("plan", ["free", "pro"]);
 export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
+// App-level surfaces a member can access (Phase 8.5). Stored on the membership
+// (users) row — NOT dependent on Clerk paid custom roles.
+export const surfaceEnum = pgEnum("surface", [
+  "operations",
+  "workflows",
+  "finance",
+]);
 export const providerKeyStatusEnum = pgEnum("provider_key_status", [
   "active",
   "errored",
@@ -108,6 +115,12 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   name: text("name").notNull(),
   role: userRoleEnum("role").notNull().default("member"),
+  // Surfaces this member can access. Admins get all three; members default to
+  // [operations]; a finance assignment grants [finance, workflows].
+  surfaces: surfaceEnum("surfaces")
+    .array()
+    .notNull()
+    .default(sql`ARRAY['operations']::surface[]`),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

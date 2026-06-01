@@ -12,28 +12,86 @@ import {
   Settings,
   CreditCard,
   Activity,
+  Workflow,
+  Landmark,
+  UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/developers", label: "Developers", icon: Users },
-  { href: "/providers", label: "Providers", icon: Key },
-  { href: "/observability", label: "Observability", icon: Activity },
-  { href: "/anomalies", label: "Anomalies", icon: AlertTriangle, badge: true },
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/billing", label: "Billing", icon: CreditCard },
-];
+type Surface = "operations" | "workflows" | "finance";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  badge?: boolean;
+};
+
+const SURFACE_NAV: Record<Surface, NavItem[]> = {
+  operations: [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/developers", label: "Developers", icon: Users },
+    { href: "/providers", label: "Providers", icon: Key },
+    { href: "/observability", label: "Observability", icon: Activity },
+    { href: "/anomalies", label: "Anomalies", icon: AlertTriangle, badge: true },
+    { href: "/integrations", label: "Integrations", icon: Plug },
+  ],
+  workflows: [{ href: "/workflows", label: "Workflows", icon: Workflow }],
+  finance: [{ href: "/finance", label: "Finance", icon: Landmark }],
+};
 
 export function Sidebar({
   className,
   unackCount = 0,
+  surfaces = ["operations"],
+  isAdmin = false,
 }: {
   className?: string;
   unackCount?: number;
+  surfaces?: Surface[];
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
+
+  // Only show surfaces the member can access, in a stable order.
+  const order: Surface[] = ["operations", "workflows", "finance"];
+  const visible = order.filter((s) => surfaces.includes(s));
+
+  const accountItems: NavItem[] = [
+    { href: "/settings", label: "Settings", icon: Settings },
+    { href: "/billing", label: "Billing", icon: CreditCard },
+    ...(isAdmin
+      ? [{ href: "/members", label: "Members", icon: UserCog }]
+      : []),
+  ];
+
+  const renderItem = (item: NavItem) => {
+    const active = pathname.startsWith(item.href);
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={cn(
+          "relative flex items-center gap-[11px] rounded-[9px] px-[11px] py-2 text-[13.5px] font-medium transition-colors",
+          active
+            ? "bg-bg-2 text-ink"
+            : "text-ink-3 hover:bg-bg-2 hover:text-ink"
+        )}
+      >
+        {active && (
+          <span className="absolute -left-3 bottom-2 top-2 w-[3px] rounded-[3px] bg-brand" />
+        )}
+        <Icon size={17} strokeWidth={active ? 2.2 : 1.9} />
+        {item.label}
+        {item.badge && unackCount > 0 && (
+          <span className="mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-white">
+            {unackCount}
+          </span>
+        )}
+      </Link>
+    );
+  };
 
   return (
     <aside
@@ -48,34 +106,24 @@ export function Sidebar({
         </Link>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
-        {navItems.map((item) => {
-          const active = pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "relative flex items-center gap-[11px] rounded-[9px] px-[11px] py-2 text-[13.5px] font-medium transition-colors",
-                active
-                  ? "bg-bg-2 text-ink"
-                  : "text-ink-3 hover:bg-bg-2 hover:text-ink"
-              )}
-            >
-              {active && (
-                <span className="absolute -left-3 bottom-2 top-2 w-[3px] rounded-[3px] bg-brand" />
-              )}
-              <Icon size={17} strokeWidth={active ? 2.2 : 1.9} />
-              {item.label}
-              {item.badge && unackCount > 0 && (
-                <span className="mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-white">
-                  {unackCount}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+        {visible.map((surface, i) => (
+          <div key={surface} className={cn(i > 0 && "mt-3")}>
+            {visible.length > 1 && (
+              <div className="px-[11px] pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-3/70">
+                {surface}
+              </div>
+            )}
+            {SURFACE_NAV[surface].map(renderItem)}
+          </div>
+        ))}
+
+        <div className="mt-3">
+          <div className="px-[11px] pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-3/70">
+            Account
+          </div>
+          {accountItems.map(renderItem)}
+        </div>
       </nav>
 
       <div className="border-t border-line p-3">

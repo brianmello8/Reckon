@@ -4,14 +4,18 @@ import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { Search, Bell } from "lucide-react";
 import { MobileNav } from "./mobile-nav";
 import { ThemeToggle } from "@/components/reckon/theme-toggle";
-import type { AuthUser } from "@/lib/auth";
+import type { AuthUser, Surface } from "@/lib/auth";
 
 export function TopBar({
   user,
   unackCount = 0,
+  surfaces = ["operations"],
+  isAdmin = false,
 }: {
   user: AuthUser;
   unackCount?: number;
+  surfaces?: Surface[];
+  isAdmin?: boolean;
 }) {
   return (
     <header
@@ -19,7 +23,11 @@ export function TopBar({
       style={{ background: "color-mix(in oklab, var(--paper) 82%, transparent)" }}
     >
       <div className="flex items-center gap-2">
-        <MobileNav unackCount={unackCount} />
+        <MobileNav
+          unackCount={unackCount}
+          surfaces={surfaces}
+          isAdmin={isAdmin}
+        />
         <OrganizationSwitcher
           hidePersonal
           afterSelectOrganizationUrl="/dashboard"

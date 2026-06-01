@@ -3,6 +3,8 @@ import { db } from "@/lib/db/client";
 import { users, organizations } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
+export type Surface = "operations" | "workflows" | "finance";
+
 export type AuthUser = {
   userId: string;
   orgId: string;
@@ -11,6 +13,7 @@ export type AuthUser = {
   email: string;
   name: string;
   role: "admin" | "member";
+  surfaces: Surface[];
   orgName: string;
   orgSlug: string;
 };
@@ -49,9 +52,15 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     email: user[0].email,
     name: user[0].name,
     role: user[0].role,
+    surfaces: (user[0].surfaces ?? ["operations"]) as Surface[],
     orgName: org[0].name,
     orgSlug: org[0].slug,
   };
+}
+
+/** Whether the user can access a given surface (admins always can). */
+export function hasSurface(user: AuthUser, surface: Surface): boolean {
+  return user.role === "admin" || user.surfaces.includes(surface);
 }
 
 /**
@@ -72,6 +81,18 @@ export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireUser();
   if (user.role !== "admin") {
     throw new Error("Forbidden: admin role required");
+  }
+  return user;
+}
+
+/**
+ * Returns the current user if they can access `surface`, else throws.
+ * Used by per-surface layouts to gate forbidden access.
+ */
+export async function requireSurface(surface: Surface): Promise<AuthUser> {
+  const user = await requireUser();
+  if (!hasSurface(user, surface)) {
+    throw new Error(`Forbidden: ${surface} surface not accessible`);
   }
   return user;
 }

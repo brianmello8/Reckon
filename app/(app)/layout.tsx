@@ -38,6 +38,12 @@ export default async function AppLayout({
 
   const isPastDue = org?.paymentStatus === "past_due";
 
+  // Surfaces this member can see in nav (admins get all three).
+  const isAdmin = user.role === "admin";
+  const surfaces = isAdmin
+    ? (["operations", "workflows", "finance"] as const).slice()
+    : user.surfaces;
+
   // Unacknowledged anomaly count for the nav badge.
   const [{ value: unackCount } = { value: 0 }] = await withOrgContext(
     user.orgId,
@@ -55,11 +61,21 @@ export default async function AppLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-warm">
-      <Sidebar className="hidden lg:flex" unackCount={Number(unackCount)} />
+      <Sidebar
+        className="hidden lg:flex"
+        unackCount={Number(unackCount)}
+        surfaces={surfaces}
+        isAdmin={isAdmin}
+      />
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {isPastDue && <PaymentBanner />}
-        <TopBar user={user} unackCount={Number(unackCount)} />
+        <TopBar
+          user={user}
+          unackCount={Number(unackCount)}
+          surfaces={surfaces}
+          isAdmin={isAdmin}
+        />
         <main className="flex-1 overflow-y-auto bg-bg-warm">
           <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up">
             {children}

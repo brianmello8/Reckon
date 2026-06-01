@@ -253,6 +253,22 @@ The app sets `app.current_org_id` at the start of each request/job. If we forget
 
 ---
 
+## 4a. Surfaces (role-aware app shell)
+
+The app is split into three **surfaces** over one shared data spine (Phase 8.5), each a different audience's lens on the same `usage_events`/attribution data:
+
+- **operations** — the original product: dashboard, developers, providers, observability, anomalies, integrations.
+- **workflows** — cost per agent/workflow/run, run distributions, the run explorer.
+- **finance** — showback, dimensions, reconciliation, accruals, unit economics (filled in Phases 9–13).
+
+**Access model (not Clerk paid roles).** Access is stored on our own membership row: `users.surfaces surface[]` (`surface` enum = operations|workflows|finance). Defaults: org **admins get all three** (and `hasSurface()` always returns true for admins regardless of the column); new members default to `[operations]`; a finance assignment grants `[finance, workflows]`. Admins set per-member access at `/members`. We deliberately do **not** depend on Clerk custom roles. Surfaces are synced on membership creation (Clerk webhook + onboarding); `lib/auth.ts` exposes `hasSurface(user, surface)` and `requireSurface(surface)`.
+
+**Route structure.** Routes live in Next.js route groups under `app/(app)/`: `(operations)/`, `(workflows)/`, `(finance)/`. Route groups are **URL-transparent** — moving the existing pages into `(operations)/` did not change any URL (`/dashboard` stays `/dashboard`), so no customer deep links broke and no redirects were needed. Account pages (`settings`, `billing`, `members`) stay at the `(app)` top level (role-gated, not surface-gated). Each group has a `layout.tsx` that `notFound()`s a member lacking that surface, so a forbidden deep link 404s. The sidebar renders only the surfaces the member can access.
+
+**Privacy.** The Workflows surface is a product/finance lens, not a people lens: its queries never select developer names, and the run-explorer drill-down exposes only provider/model/token/cost (no developer identity). Finance rollups (Phase 9+) default to dimensions, not individuals.
+
+---
+
 ## 5. Security architecture
 
 ### Provider key lifecycle
