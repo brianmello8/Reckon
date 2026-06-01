@@ -118,6 +118,9 @@ export const developers = pgTable(
     displayName: text("display_name").notNull(),
     email: text("email").notNull(),
     slackUserId: text("slack_user_id"),
+    // Optional agent mapping (Phase 8.2): all of this developer's usage is
+    // attributed to this agent unless a more specific identity mapping applies.
+    agentId: uuid("agent_id").references(() => agents.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -178,6 +181,9 @@ export const providerIdentities = pgTable(
     externalId: text("external_id").notNull(),
     label: text("label"),
     developerId: uuid("developer_id").references(() => developers.id),
+    // Optional agent mapping (Phase 8.2): a dedicated per-agent key/seat/user
+    // shows up as its own identity. Takes precedence over the developer mapping.
+    agentId: uuid("agent_id").references(() => agents.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -503,7 +509,33 @@ export const developersRelations = relations(developers, ({ one, many }) => ({
   providerKeys: many(providerKeys),
   usageEvents: many(usageEvents),
   anomalies: many(anomalies),
+  agent: one(agents, {
+    fields: [developers.agentId],
+    references: [agents.id],
+  }),
 }));
+
+export const providerIdentitiesRelations = relations(
+  providerIdentities,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [providerIdentities.orgId],
+      references: [organizations.id],
+    }),
+    provider: one(providers, {
+      fields: [providerIdentities.providerId],
+      references: [providers.id],
+    }),
+    developer: one(developers, {
+      fields: [providerIdentities.developerId],
+      references: [developers.id],
+    }),
+    agent: one(agents, {
+      fields: [providerIdentities.agentId],
+      references: [agents.id],
+    }),
+  })
+);
 
 export const providersRelations = relations(providers, ({ many }) => ({
   providerKeys: many(providerKeys),

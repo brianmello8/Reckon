@@ -11,10 +11,12 @@ import { notifyAnomaly } from "@/lib/jobs/notify-anomaly";
 import { syncDeveloperCount } from "@/lib/jobs/sync-developer-count";
 import { enforceRetention } from "@/lib/jobs/enforce-retention";
 import { composeWeeklyDigest } from "@/lib/jobs/compose-weekly-digest";
+import { recomputeAttribution } from "@/lib/jobs/recompute-attribution";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
+    recomputeAttribution,
     helloWorld,
     ingestProviderKey,
     orchestrateIngestion,

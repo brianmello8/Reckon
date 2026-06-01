@@ -21,7 +21,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ExternalLink, Plug } from "lucide-react";
-import { connectOrgKey, disconnectProvider, assignIdentity } from "./actions";
+import {
+  connectOrgKey,
+  disconnectProvider,
+  assignIdentity,
+  assignIdentityToAgent,
+  recomputeAttributionAction,
+} from "./actions";
 import { fmtMoney, microsToDollars } from "@/lib/reckon/format";
 
 type ProviderRow = {
@@ -36,6 +42,7 @@ type ProviderRow = {
   lastError: string | null;
 };
 type DevRow = { id: string; displayName: string };
+type AgentRow = { id: string; name: string; status: "active" | "archived" };
 type IdentityRow = {
   id: string;
   providerId: string;
@@ -43,6 +50,7 @@ type IdentityRow = {
   externalId: string;
   label: string | null;
   developerId: string | null;
+  agentId: string | null;
   cost30d: string;
 };
 
@@ -50,10 +58,12 @@ export function ProvidersClient({
   providers,
   developers,
   identities,
+  agents,
 }: {
   providers: ProviderRow[];
   developers: DevRow[];
   identities: IdentityRow[];
+  agents: AgentRow[];
 }) {
   return (
     <div className="space-y-8">
@@ -63,7 +73,11 @@ export function ProvidersClient({
         ))}
       </div>
 
-      <IdentityMapping identities={identities} developers={developers} />
+      <IdentityMapping
+        identities={identities}
+        developers={developers}
+        agents={agents}
+      />
     </div>
   );
 }
@@ -203,15 +217,23 @@ function ProviderCard({ provider }: { provider: ProviderRow }) {
   );
 }
 
+const NEW_AGENT = "__new__";
+
 function IdentityMapping({
   identities,
   developers,
+  agents,
 }: {
   identities: IdentityRow[];
   developers: DevRow[];
+  agents: AgentRow[];
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = React.useState<string | null>(null);
+  const [pendingAgentId, setPendingAgentId] = React.useState<string | null>(
+    null
+  );
+  const [recomputing, setRecomputing] = React.useState(false);
 
   async function handleAssign(identity: IdentityRow, developerId: string) {
     setPendingId(identity.id);
@@ -230,6 +252,40 @@ function IdentityMapping({
     }
   }
 
+  async function handleAssignAgent(identity: IdentityRow, value: string) {
+    const fd = new FormData();
+    fd.set("identityId", identity.id);
+    if (value === NEW_AGENT) {
+      const name = window.prompt("New agent name");
+      if (!name || !name.trim()) return;
+      fd.set("newAgentName", name.trim());
+    } else {
+      fd.set("agentId", value);
+    }
+    setPendingAgentId(identity.id);
+    try {
+      await assignIdentityToAgent(fd);
+      toast.success("Agent mapping updated — recomputing attribution");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPendingAgentId(null);
+    }
+  }
+
+  async function handleRecompute() {
+    setRecomputing(true);
+    try {
+      await recomputeAttributionAction();
+      toast.success("Attribution recompute queued");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setRecomputing(false);
+    }
+  }
+
   if (identities.length === 0) {
     return (
       <div>
@@ -244,12 +300,28 @@ function IdentityMapping({
 
   return (
     <div>
-      <h2 className="text-[15px] font-semibold text-ink">Developer mapping</h2>
-      <p className="mt-1 text-sm text-zinc-500">
-        Each provider identity (API key, user, or seat) maps to a developer.
-        We auto-assign where we can; assign the rest here. Create new developers
-        on the Developers page.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-[15px] font-semibold text-ink">
+            Developer &amp; agent mapping
+          </h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Each provider identity (API key, user, or seat) maps to a developer
+            and, optionally, an agent. The agent mapping attributes that
+            identity&apos;s spend to a workflow/agent; it takes precedence over a
+            developer-level agent mapping.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRecompute}
+          disabled={recomputing}
+          className="shrink-0"
+        >
+          {recomputing ? "Recomputing…" : "Recompute attribution"}
+        </Button>
+      </div>
       <div className="mt-4 overflow-hidden rounded-xl border border-line bg-paper">
         <table className="w-full text-sm">
           <thead className="border-b border-line bg-bg-2 text-left text-[12px] text-ink-3">
@@ -258,6 +330,7 @@ function IdentityMapping({
               <th className="px-4 py-2 font-medium">Identity</th>
               <th className="px-4 py-2 font-medium">Spend · 30d</th>
               <th className="px-4 py-2 font-medium">Developer</th>
+              <th className="px-4 py-2 font-medium">Agent</th>
             </tr>
           </thead>
           <tbody>
@@ -285,6 +358,23 @@ function IdentityMapping({
                         {d.displayName}
                       </option>
                     ))}
+                  </select>
+                </td>
+                <td className="px-4 py-2.5">
+                  <select
+                    value={idn.agentId ?? ""}
+                    disabled={pendingAgentId === idn.id}
+                    onChange={(e) => handleAssignAgent(idn, e.target.value)}
+                    className="h-8 w-full max-w-[220px] rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    <option value="">No agent</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                        {a.status === "archived" ? " (archived)" : ""}
+                      </option>
+                    ))}
+                    <option value={NEW_AGENT}>+ New agent…</option>
                   </select>
                 </td>
               </tr>

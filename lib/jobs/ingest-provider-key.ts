@@ -5,6 +5,11 @@ import { eq } from "drizzle-orm";
 import { decryptSecret } from "@/lib/encryption/envelope";
 import { getProviderClient } from "@/lib/providers/registry";
 import { resolveDeveloperForIdentity } from "@/lib/providers/identities";
+import {
+  resolveAgentIdForEvent,
+  getOrCreateKeyMappingSource,
+  upsertEventAttribution,
+} from "@/lib/attribution/key-mapping";
 import { ProviderAuthError, ProviderTransientError } from "@/lib/providers/errors";
 import { subHours, subDays, addDays, parseISO, differenceInDays, min } from "date-fns";
 import type { UsageRow } from "@/lib/providers/types";
@@ -164,10 +169,32 @@ async function upsertRows(
     identityToDev.set(row.external_identity, developerId ?? null);
   }
 
+  // Resolve agent mappings once per (identity, developer) pair so inline
+  // attribution doesn't re-query per row. Lazily create the key_mapping source
+  // only if at least one event is actually mapped (additive: unmapped orgs are
+  // untouched).
+  const agentCache = new Map<string, string | null>();
+  let keyMappingSourceId: string | null = null;
+  async function agentFor(
+    externalIdentity: string,
+    developerId: string | null
+  ): Promise<string | null> {
+    const cacheKey = `${externalIdentity}|${developerId ?? ""}`;
+    if (agentCache.has(cacheKey)) return agentCache.get(cacheKey)!;
+    const agentId = await resolveAgentIdForEvent({
+      orgId: keyRow.orgId,
+      providerId: keyRow.providerId,
+      externalIdentity,
+      developerId,
+    });
+    agentCache.set(cacheKey, agentId);
+    return agentId;
+  }
+
   let count = 0;
   for (const row of rows) {
     const developerId = identityToDev.get(row.external_identity) ?? null;
-    await db
+    const [upserted] = await db
       .insert(usageEvents)
       .values({
         orgId: keyRow.orgId,
@@ -199,7 +226,23 @@ async function upsertRows(
           raw: row.raw,
           updatedAt: new Date(),
         },
+      })
+      .returning({ id: usageEvents.id });
+
+    // Inline attribution: write a usage_attribution row only when this event's
+    // identity or developer maps to an agent. No mapping → no row (unchanged).
+    const agentId = await agentFor(row.external_identity, developerId);
+    if (agentId && upserted) {
+      if (!keyMappingSourceId) {
+        keyMappingSourceId = await getOrCreateKeyMappingSource(keyRow.orgId);
+      }
+      await upsertEventAttribution({
+        orgId: keyRow.orgId,
+        usageEventId: upserted.id,
+        agentId,
+        sourceId: keyMappingSourceId,
       });
+    }
     count++;
   }
   return count;

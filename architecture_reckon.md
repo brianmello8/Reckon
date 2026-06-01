@@ -190,6 +190,21 @@ All five are org-scoped (`org_id NOT NULL`) and carry the standard RLS policy
 
 > Read-performance note: if attribution rollups get slow, the answer is a materialized rollup keyed off `usage_attribution`, **not** denormalizing dimensions onto `usage_events`. The ledger stays immutable.
 
+### Approach A — key/developer → agent mapping (Phase 8.2)
+
+The first agent-attribution source is a pure mapping, no new data feeds. It is adapted to the current attribution model (load-bearing decision #2: one org-wide admin key per provider, with per-identity breakdown), so the mapping attaches at the **identity** and **developer** level rather than at the org `provider_keys` row (which would attribute the whole org to one agent):
+
+- **`provider_identities.agent_id`** (nullable FK → `agents`) — maps a single provider-side identity (an Anthropic `api_key_id`, OpenAI `user_id`, or Copilot seat) to an agent. A customer who mints a dedicated key per agent sees that key as its own identity, so this is the "key → agent" path.
+- **`developers.agent_id`** (nullable FK → `agents`) — maps a developer to an agent (the "this dev's key is really the support bot" case).
+
+**Resolution precedence.** For each `usage_events` row the agent is `COALESCE(identity.agent_id, developer.agent_id)` — the identity mapping wins; the developer mapping is the fallback; if neither resolves, the event is left **unattributed** (no `usage_attribution` row). A shared key that serves multiple agents cannot be split at this level — it is left unattributed at the agent level, pending workflow-level attribution (Phase 8.3/8.4).
+
+**Derivation source.** These rows are written with a single per-org `attribution_sources` row of `source_type = key_mapping` and `confidence = exact`, `workflow_id = NULL`.
+
+**Two write paths, both in `lib/attribution/key-mapping.ts`:**
+- *Inline at ingest* — the ingestion worker (`lib/jobs/ingest-provider-key.ts`) resolves the agent for each upserted event and writes its `usage_attribution` row when (and only when) a mapping applies. Additive: no mapping → no row, and ingestion behaves exactly as before.
+- *Recompute* — `recomputeOrgKeyMappingAttribution(orgId)` does the §3a delete+reinsert for the whole org: delete the org's `key_mapping` rows, then reinsert one per event that resolves to an agent. Idempotent (re-running yields identical counts; guaranteed by the unique `(org_id, usage_event_id)` index). It runs in the `recompute-attribution` Inngest job, fired whenever an identity→agent or developer→agent mapping changes and from the manual "Recompute attribution" action on the Providers page.
+
 ---
 
 ## 4. Multi-tenancy and isolation

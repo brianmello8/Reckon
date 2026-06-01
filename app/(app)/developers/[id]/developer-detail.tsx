@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { Key, ArrowLeft, RefreshCw } from "lucide-react";
 import { revokeProviderKey, repollKey } from "./actions";
+import { assignDeveloperToAgent } from "../../providers/actions";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow, differenceInMinutes } from "date-fns";
 import Link from "next/link";
 
@@ -33,18 +35,48 @@ type Developer = {
   id: string;
   displayName: string;
   email: string;
+  agentId: string | null;
   createdAt: Date;
 };
+
+type AgentRow = { id: string; name: string; status: "active" | "archived" };
+
+const NEW_AGENT = "__new__";
 
 export function DeveloperDetail({
   developer,
   keys,
+  agents,
 }: {
   developer: Developer;
   keys: ProviderKey[];
+  agents: AgentRow[];
 }) {
+  const router = useRouter();
   const [revokePending, startRevokeTransition] = useTransition();
   const [repollPending, startRepollTransition] = useTransition();
+  const [agentPending, startAgentTransition] = useTransition();
+
+  function handleAssignAgent(value: string) {
+    const fd = new FormData();
+    fd.set("developerId", developer.id);
+    if (value === NEW_AGENT) {
+      const name = window.prompt("New agent name");
+      if (!name || !name.trim()) return;
+      fd.set("newAgentName", name.trim());
+    } else {
+      fd.set("agentId", value);
+    }
+    startAgentTransition(async () => {
+      try {
+        await assignDeveloperToAgent(fd);
+        toast.success("Agent mapping updated — recomputing attribution");
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed");
+      }
+    });
+  }
 
   function handleRepoll(keyId: string) {
     startRepollTransition(async () => {
@@ -102,6 +134,40 @@ export function DeveloperDetail({
         </h1>
         <p className="mt-1 text-sm text-zinc-600">{developer.email}</p>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-lg">Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 max-w-prose text-sm text-zinc-600">
+            Attribute this developer&apos;s spend to an agent. A per-identity
+            agent mapping on the{" "}
+            <Link
+              href="/providers"
+              className="font-medium text-zinc-900 underline"
+            >
+              Providers
+            </Link>{" "}
+            page takes precedence over this.
+          </p>
+          <select
+            value={developer.agentId ?? ""}
+            disabled={agentPending}
+            onChange={(e) => handleAssignAgent(e.target.value)}
+            className="h-9 w-full max-w-[280px] rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <option value="">No agent</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+                {a.status === "archived" ? " (archived)" : ""}
+              </option>
+            ))}
+            <option value={NEW_AGENT}>+ New agent…</option>
+          </select>
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>

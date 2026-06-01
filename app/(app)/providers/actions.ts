@@ -11,6 +11,7 @@ import {
   organizations,
   providerIdentities,
   usageEvents,
+  agents,
 } from "@/lib/db/schema";
 import { eq, and, sql, gte } from "drizzle-orm";
 import { z } from "zod";
@@ -174,6 +175,7 @@ export async function getProviderIdentities() {
         externalId: providerIdentities.externalId,
         label: providerIdentities.label,
         developerId: providerIdentities.developerId,
+        agentId: providerIdentities.agentId,
       })
       .from(providerIdentities)
       .innerJoin(providers, eq(providerIdentities.providerId, providers.id))
@@ -282,5 +284,147 @@ export async function assignIdentity(formData: FormData) {
 
   revalidatePath("/providers");
   revalidatePath("/dashboard");
+  return { success: true };
+}
+
+// --- Agent mapping (Phase 8.2, Approach A) ---
+
+/** Agents for the org, for the mapping dropdowns. */
+export async function getAgents() {
+  const user = await requireUser();
+  return withOrgContext(user.orgId, async (tx) =>
+    tx
+      .select({ id: agents.id, name: agents.name, status: agents.status })
+      .from(agents)
+      .where(eq(agents.orgId, user.orgId))
+      .orderBy(agents.name)
+  );
+}
+
+/** Resolve an agentId from an existing id or an inline new-agent name. */
+async function resolveAgentId(
+  orgId: string,
+  agentId: string,
+  newAgentName: string
+): Promise<string | null> {
+  if (agentId && agentId !== "") {
+    const [owned] = await withOrgContext(orgId, async (tx) =>
+      tx
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.id, agentId), eq(agents.orgId, orgId)))
+        .limit(1)
+    );
+    if (!owned) throw new Error("Agent not found.");
+    return owned.id;
+  }
+  if (newAgentName && newAgentName.trim()) {
+    const [created] = await withOrgContext(orgId, async (tx) =>
+      tx
+        .insert(agents)
+        .values({ orgId, name: newAgentName.trim() })
+        .returning({ id: agents.id })
+    );
+    return created.id;
+  }
+  return null; // unassign
+}
+
+const assignAgentToIdentitySchema = z.object({
+  identityId: z.string().uuid(),
+  agentId: z.string().uuid().optional().or(z.literal("")),
+  newAgentName: z.string().optional(),
+});
+
+/** Map a provider identity (a key/user/seat) to an agent, then recompute. */
+export async function assignIdentityToAgent(formData: FormData) {
+  const user = await requireAdmin();
+  const parsed = assignAgentToIdentitySchema.parse({
+    identityId: formData.get("identityId"),
+    agentId: formData.get("agentId") ?? "",
+    newAgentName: formData.get("newAgentName") ?? "",
+  });
+
+  const agentId = await resolveAgentId(
+    user.orgId,
+    parsed.agentId ?? "",
+    parsed.newAgentName ?? ""
+  );
+
+  const updated = await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .update(providerIdentities)
+      .set({ agentId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(providerIdentities.id, parsed.identityId),
+          eq(providerIdentities.orgId, user.orgId)
+        )
+      )
+      .returning({ id: providerIdentities.id })
+  );
+  if (updated.length === 0) throw new Error("Identity not found.");
+
+  await inngest.send({
+    name: "attribution/recompute.requested",
+    data: { org_id: user.orgId },
+  });
+
+  revalidatePath("/providers");
+  return { success: true };
+}
+
+const assignAgentToDeveloperSchema = z.object({
+  developerId: z.string().uuid(),
+  agentId: z.string().uuid().optional().or(z.literal("")),
+  newAgentName: z.string().optional(),
+});
+
+/** Map a developer to an agent, then recompute. */
+export async function assignDeveloperToAgent(formData: FormData) {
+  const user = await requireAdmin();
+  const parsed = assignAgentToDeveloperSchema.parse({
+    developerId: formData.get("developerId"),
+    agentId: formData.get("agentId") ?? "",
+    newAgentName: formData.get("newAgentName") ?? "",
+  });
+
+  const agentId = await resolveAgentId(
+    user.orgId,
+    parsed.agentId ?? "",
+    parsed.newAgentName ?? ""
+  );
+
+  const updated = await withOrgContext(user.orgId, async (tx) =>
+    tx
+      .update(developers)
+      .set({ agentId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(developers.id, parsed.developerId),
+          eq(developers.orgId, user.orgId)
+        )
+      )
+      .returning({ id: developers.id })
+  );
+  if (updated.length === 0) throw new Error("Developer not found.");
+
+  await inngest.send({
+    name: "attribution/recompute.requested",
+    data: { org_id: user.orgId },
+  });
+
+  revalidatePath(`/developers/${parsed.developerId}`);
+  revalidatePath("/providers");
+  return { success: true };
+}
+
+/** Manual "recompute attribution" action for the whole org. */
+export async function recomputeAttributionAction() {
+  const user = await requireAdmin();
+  await inngest.send({
+    name: "attribution/recompute.requested",
+    data: { org_id: user.orgId },
+  });
   return { success: true };
 }
