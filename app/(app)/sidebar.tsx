@@ -11,6 +11,7 @@ import {
   Plug,
   Settings,
   CreditCard,
+  Activity,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/developers", label: "Developers", icon: Users },
   { href: "/providers", label: "Providers", icon: Key },
+  { href: "/observability", label: "Observability", icon: Activity },
   { href: "/anomalies", label: "Anomalies", icon: AlertTriangle, badge: true },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },

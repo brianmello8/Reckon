@@ -64,6 +64,14 @@ export const attributionConfidenceEnum = pgEnum("attribution_confidence", [
   "exact",
   "inferred",
 ]);
+export const observabilityProviderEnum = pgEnum("observability_provider", [
+  "langfuse",
+  "helicone",
+]);
+export const observabilityConnectionStatusEnum = pgEnum(
+  "observability_connection_status",
+  ["active", "error", "disabled"]
+);
 
 // --- Tables ---
 
@@ -391,6 +399,38 @@ export const usageAttribution = pgTable(
   ]
 );
 
+// A connection to a customer's LLM-observability tool (Langfuse/Helicone).
+// We read run/trace METADATA ONLY (ids, timing, model, token counts) — never
+// prompt/response content. Credentials use the same KMS envelope as
+// provider_keys (architecture §3b).
+export const observabilityConnections = pgTable(
+  "observability_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    provider: observabilityProviderEnum("provider").notNull(),
+    baseUrl: text("base_url").notNull(),
+    encryptedCredentials: bytea("encrypted_credentials").notNull(),
+    encryptedDek: bytea("encrypted_dek").notNull(),
+    iv: bytea("iv").notNull(),
+    authTag: bytea("auth_tag").notNull(),
+    status: observabilityConnectionStatusEnum("status")
+      .notNull()
+      .default("active"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("idx_observability_connections_org").on(t.orgId)]
+);
+
 export const anomalies = pgTable(
   "anomalies",
   {
@@ -644,6 +684,16 @@ export const usageAttributionRelations = relations(
     attributionSource: one(attributionSources, {
       fields: [usageAttribution.attributionSourceId],
       references: [attributionSources.id],
+    }),
+  })
+);
+
+export const observabilityConnectionsRelations = relations(
+  observabilityConnections,
+  ({ one }) => ({
+    organization: one(organizations, {
+      fields: [observabilityConnections.orgId],
+      references: [organizations.id],
     }),
   })
 );

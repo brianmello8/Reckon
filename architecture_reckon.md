@@ -209,6 +209,31 @@ The first agent-attribution source is a pure mapping, no new data feeds. It is a
 
 ---
 
+## 3b. Observability connectors (Langfuse / Helicone)
+
+Approach C reads run/trace metadata from the customer's existing LLM-observability tool and joins it to `usage_events` — the same passive, polled posture as the provider usage APIs (decision #1). It is **not** in the request path.
+
+### Metadata only — the hard rule
+
+We pull **metadata only**: run/trace ids, workflow names, timing, model, and token counts. We **never** request, read, or store prompt/response/input/output content, even when the API returns it. The connector contract (`lib/observability/types.ts`) has no field that can carry message content, and each adapter copies a fixed allowlist of metadata fields — it never references the `input`/`output`/body fields on the upstream objects. Generation token records are used transiently for the join and are **not** persisted as rows.
+
+Persisted fields and their (potentially customer-controlled) sources:
+- `workflows.name` ← Langfuse trace `name` / Helicone `session:<id>`. Treated as a **label only**; persisted truncated to a short length so an accidental free-text value can't carry meaningful content.
+- `workflow_runs`: `external_run_id` (trace id / session id), `started_at`, `ended_at`, `status`, `customer_ref` (Langfuse `userId` / Helicone user) — `customer_ref` is treated as an opaque end-customer id.
+- `observability_connections`: provider, `base_url`, KMS-encrypted credentials (same envelope as `provider_keys`, §-encryption), status, sync timing.
+
+### The (model, day) fingerprint join
+
+Provider usage APIs report **daily aggregates** (`usage_events` is one row per `provider_key × identity × day × model`), so a single observability generation cannot be matched to a per-call usage row. The join therefore operates at the **`(model, day)` grain**: generations are grouped by their model and UTC day, and a `usage_events` row (a model's spend for one day) is attributed to a workflow only when **exactly one** workflow claims that `(model, day)`. Ambiguous days (multiple workflows) are left **unattributed** — no guessing — and surface in attribution coverage (§3a). A `workflow_run_id` is linked only when exactly one run claims the day. Confidence is always `inferred` (daily aggregates carry no provider request id for an `exact` match). The poller logs the match rate (`usage matched / in-window`, `runs linked`); unmatched runs are retained as `workflow_runs` for run-count value.
+
+Cross-source precedence: the observability upsert fills `workflow_id`/`workflow_run_id`/`customer_ref` and preserves any existing agent via `COALESCE(existing agent_id, workflow's agent_id)`, so it never clobbers an `exact` key-mapping agent (§3a). A full precedence/re-derivation engine across sources is deferred.
+
+### Polling
+
+`lib/observability/sync.ts` does the work; `lib/jobs/poll-observability.ts` wraps it as an Inngest function (`observability/poll.requested`) plus an hourly cron (`cron-observability-poll`, offset 30 min after ingestion so the day's `usage_events` are present). Idempotent: workflows upsert by name, runs by `external_run_id`, attribution by the unique `(org_id, usage_event_id)`. Auth errors set `status = error`; transient errors retry. Reads metadata only and never mutates `usage_events`.
+
+---
+
 ## 4. Multi-tenancy and isolation
 
 Every row in customer-data tables carries `org_id`. Two layers of defense:

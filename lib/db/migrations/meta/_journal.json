@@ -78,6 +78,13 @@
       "when": 1780343226130,
       "tag": "0010_whole_silhouette",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780345020417,
+      "tag": "0011_many_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

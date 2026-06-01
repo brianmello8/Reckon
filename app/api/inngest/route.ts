@@ -12,11 +12,17 @@ import { syncDeveloperCount } from "@/lib/jobs/sync-developer-count";
 import { enforceRetention } from "@/lib/jobs/enforce-retention";
 import { composeWeeklyDigest } from "@/lib/jobs/compose-weekly-digest";
 import { recomputeAttribution } from "@/lib/jobs/recompute-attribution";
+import {
+  pollObservabilityConnection,
+  cronObservabilityPoll,
+} from "@/lib/jobs/poll-observability";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
     recomputeAttribution,
+    pollObservabilityConnection,
+    cronObservabilityPoll,
     helloWorld,
     ingestProviderKey,
     orchestrateIngestion,
