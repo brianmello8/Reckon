@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fmtMoney, microsToDollars } from "@/lib/reckon/format";
-import { generateAccrualAction, approveAccrualJE } from "./actions";
+import {
+  generateAccrualAction,
+  approveAccrualJE,
+  generateReversalAction,
+  generateTrueUpAction,
+} from "./actions";
 
 type Line = { label: string; costCenter: string; debit: string; credit: string };
 type Accrual = {
@@ -16,6 +21,10 @@ type Accrual = {
   tail: string;
   methodNote: string;
   status: string;
+  actual: string | null;
+  variance: string | null;
+  reversalStatus: string | null;
+  trueUpStatus: string | null;
   journalEntryId: string | null;
   jeStatus: string;
   approvedAt: string | null;
@@ -32,10 +41,16 @@ type Period = {
   status: string;
   hasAccrual: boolean;
 };
+type AccuracyRow = { period: string; estimated: string; actual: string; variance: string; errorPct: number };
+type Accuracy = { rows: AccuracyRow[]; summary: string | null };
 
 const money = (m: string) => fmtMoney(microsToDollars(Number(m)));
 
-export function AccrualsClient({ view }: { view: { periods: Period[]; accruals: Accrual[] } }) {
+export function AccrualsClient({
+  view,
+}: {
+  view: { periods: Period[]; accruals: Accrual[]; accuracy: Accuracy };
+}) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
   const accrualByPeriod = new Map(view.accruals.map((a) => [a.periodId, a]));
@@ -59,6 +74,40 @@ export function AccrualsClient({ view }: { view: { periods: Period[]; accruals: 
 
   return (
     <div className="space-y-4">
+      {view.accuracy.summary && (
+        <div className="rounded-xl border border-line bg-bg-2 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-ink-3">Accrual accuracy</div>
+              <div className="font-semibold text-ink">{view.accuracy.summary}</div>
+            </div>
+          </div>
+          <div className="mt-3 overflow-hidden rounded-lg border border-line">
+            <table className="w-full text-[13px]">
+              <thead className="bg-paper text-left text-[12px] text-ink-3">
+                <tr>
+                  <th className="px-3 py-1.5 font-medium">Period</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Estimated</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Actual</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Variance</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Error %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.accuracy.rows.map((r, i) => (
+                  <tr key={i} className="border-t border-line">
+                    <td className="px-3 py-1.5 text-ink-2">{r.period}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-ink-2">{money(r.estimated)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-ink-2">{money(r.actual)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-ink-2">{money(r.variance)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-ink">{r.errorPct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {view.periods.map((p) => {
         const a = accrualByPeriod.get(p.id);
         return (
@@ -128,15 +177,55 @@ export function AccrualsClient({ view }: { view: { periods: Period[]; accruals: 
                   <pre className="mt-1 whitespace-pre-wrap font-sans text-[12.5px] text-ink-3">{a.methodNote}</pre>
                 </details>
 
-                {a.journalEntryId && a.jeStatus === "draft" && (
-                  <Button
-                    size="sm"
-                    disabled={busy === p.id || !a.balanced}
-                    onClick={() => run(p.id, () => approveAccrualJE(a.journalEntryId!), "Approved")}
-                  >
-                    Approve (internal)
-                  </Button>
-                )}
+                {/* Close-loop chain: accrual → approve → reversal (next period) + true-up (actual). */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {a.journalEntryId && a.jeStatus === "draft" && (
+                    <Button
+                      size="sm"
+                      disabled={busy === p.id || !a.balanced}
+                      onClick={() => run(p.id, () => approveAccrualJE(a.journalEntryId!), "Approved")}
+                    >
+                      Approve (internal)
+                    </Button>
+                  )}
+                  {a.jeStatus === "approved" && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy === p.id}
+                        title="Book a draft reversing entry in the next period"
+                        onClick={() => run(p.id, () => generateReversalAction(a.id), "Reversal drafted")}
+                      >
+                        {a.reversalStatus ? "Regenerate reversal" : "Reverse (next period)"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy === p.id}
+                        title="Book the reconciled variance (actual − accrual) by the accrual's dimensions"
+                        onClick={() => run(p.id, () => generateTrueUpAction(a.id), "True-up drafted")}
+                      >
+                        {a.trueUpStatus ? "Regenerate true-up" : "True up to actual"}
+                      </Button>
+                    </>
+                  )}
+                  {a.reversalStatus && (
+                    <Badge variant={a.reversalStatus === "approved" ? "default" : "secondary"}>
+                      reversal {a.reversalStatus}
+                    </Badge>
+                  )}
+                  {a.trueUpStatus && (
+                    <Badge variant={a.trueUpStatus === "approved" ? "default" : "secondary"}>
+                      true-up {a.trueUpStatus}
+                    </Badge>
+                  )}
+                  {a.actual != null && (
+                    <span className="text-[12px] text-ink-3">
+                      actual {money(a.actual)} · variance {money(a.variance ?? "0")}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

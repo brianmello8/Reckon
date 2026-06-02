@@ -486,6 +486,27 @@ The month-end accrual is Reckon's headline close feature: real-time usage is the
 
 ---
 
+## 5f. Close — reversal, true-up & accrual accuracy (Phase 11.3)
+
+The accrual close loop: an accrual estimates the invoice, then next period it is **reversed** (so the estimate doesn't double-count) and the **actual** invoice is **trued up** against it. `lib/close/reversal.ts` (pure `buildReversalLines` + `buildTrueUpLines`, DB `generateReversal`/`generateTrueUp`/`getAccrualAccuracy`/`getLinkedEntries`).
+
+**Schema additions.** `journal_entry_type` enum gains `reversal`. `journal_entries.source_journal_entry_id` (self-FK) links a reversal/true-up back to its accrual JE — **every linked entry is traceable, never orphaned**. `accruals` gains `actual_amount` + `variance_amount` (set when trued up).
+
+**Reversal** (`buildReversalLines`, pure). Books a draft entry in the **next period for the same scope** (entity, else org-wide) that **swaps debit ↔ credit of every accrual line** — so accrual + reversal nets to **exactly zero on every dimension** (GL × cost center × entity). Idempotency `reversal:{accrualJeId}`. Requires the next accounting period to exist.
+
+**True-up** (`buildTrueUpLines`, pure). Requires a **reconciled actual invoice** (§5b) whose billing month matches the period; refuses otherwise. `variance = actual − estimated`. The variance is split **pro-rata across the accrual's expense lines** (largest-remainder, carrying the same GL/CC dimensions), **sign-aware**: `variance > 0` (under-accrued) books **more expense** (debit); `< 0` (over-accrued) **reverses expense** (credit). One balancing accrued-liability line. Booked in the **accrual's own period**, idempotency `true_up:{accrualJeId}`. Sets the accrual's `actual_amount`/`variance_amount` and status `trued_up`.
+
+**Accuracy** (`getAccrualAccuracy`). Per-period `errorPct = |variance| / actual` over trued-up accruals + a one-line summary ("AI accrual within ±X%") — auditor evidence that the estimate is trustworthy.
+
+**Invariants & gates.**
+- **Balanced & draft-first:** both helpers return `balanced`; the DB functions **refuse to write unbalanced** entries and create everything `draft`. Reversal/true-up reuse the accrual's human-approval path (`approveAccrualJE` is the only draft→approved transition); nothing posts externally (Phase 13).
+- **Idempotent:** keyed per source JE — regenerating **replaces** a prior draft; an `approved`/`posted` reversal or true-up **blocks regenerate**.
+- **Traceable:** `source_journal_entry_id` ties each reversal/true-up to its accrual; the UI renders the chain accrual → reversal → true-up with each entry's status.
+
+Verified by `scripts/test-accrual-loop.ts` (pure): reversal nets to zero on every dimension; under/over/exact true-ups balance with correct sign and dimensions; `errorPct` math.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

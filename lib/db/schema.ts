@@ -149,6 +149,7 @@ export const journalEntryTypeEnum = pgEnum("journal_entry_type", [
   "accrual",
   "allocation",
   "true_up",
+  "reversal",
 ]);
 export const journalEntryStatusEnum = pgEnum("journal_entry_status", [
   "draft",
@@ -926,6 +927,11 @@ export const journalEntries = pgTable(
     status: journalEntryStatusEnum("status").notNull().default("draft"),
     // Unique per org — prevents a duplicate JE for the same logical entry.
     idempotencyKey: text("idempotency_key").notNull(),
+    // For reversal/true-up entries: the JE they derive from (traceability,
+    // Phase 11.3). Never orphaned.
+    sourceJournalEntryId: uuid("source_journal_entry_id").references(
+      (): AnyPgColumn => journalEntries.id
+    ),
     memo: text("memo"),
     approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -969,6 +975,9 @@ export const accruals = pgTable(
     provider: text("provider"), // null = total across providers
     estimatedAmount: bigint("estimated_amount", { mode: "bigint" }).notNull(),
     tailForecastAmount: bigint("tail_forecast_amount", { mode: "bigint" }).notNull(),
+    // Set at true-up (Phase 11.3): the reconciled actual and the variance.
+    actualAmount: bigint("actual_amount", { mode: "bigint" }),
+    varianceAmount: bigint("variance_amount", { mode: "bigint" }),
     methodNote: text("method_note").notNull(),
     status: accrualStatusEnum("status").notNull().default("draft"),
     journalEntryId: uuid("journal_entry_id").references(() => journalEntries.id),

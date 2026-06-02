@@ -14,6 +14,12 @@ import {
 import { and, eq, inArray, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { generateAccrual } from "@/lib/close/accrual";
+import {
+  generateReversal,
+  generateTrueUp,
+  getAccrualAccuracy,
+  getLinkedEntries,
+} from "@/lib/close/reversal";
 
 export async function getAccrualsView() {
   const user = await requireSurface("finance");
@@ -37,6 +43,8 @@ export async function getAccrualsView() {
         tailForecastAmount: accruals.tailForecastAmount,
         methodNote: accruals.methodNote,
         status: accruals.status,
+        actualAmount: accruals.actualAmount,
+        varianceAmount: accruals.varianceAmount,
         journalEntryId: accruals.journalEntryId,
         jeStatus: journalEntries.status,
         approvedAt: journalEntries.approvedAt,
@@ -70,7 +78,16 @@ export async function getAccrualsView() {
 
     const accrualByPeriod = new Map(accrualRows.map((a) => [a.periodId, a]));
 
+    // Linked reversal / true-up entries (traceable to each accrual JE).
+    const linked = await getLinkedEntries(user.orgId, jeIds);
+    const linkedBySource = new Map<string, { type: string; status: string }>();
+    for (const e of linked) {
+      if (e.sourceJournalEntryId) linkedBySource.set(`${e.sourceJournalEntryId}:${e.type}`, { type: e.type, status: e.status });
+    }
+    const accuracy = await getAccrualAccuracy(user.orgId);
+
     return {
+      accuracy,
       periods: periods.map((p) => ({
         id: p.id,
         label: p.entityId ? ents.get(p.entityId) ?? "Entity" : "Org-wide",
@@ -90,6 +107,10 @@ export async function getAccrualsView() {
           tail: a.tailForecastAmount.toString(),
           methodNote: a.methodNote,
           status: a.status,
+          actual: a.actualAmount != null ? a.actualAmount.toString() : null,
+          variance: a.varianceAmount != null ? a.varianceAmount.toString() : null,
+          reversalStatus: a.journalEntryId ? linkedBySource.get(`${a.journalEntryId}:reversal`)?.status ?? null : null,
+          trueUpStatus: a.journalEntryId ? linkedBySource.get(`${a.journalEntryId}:true_up`)?.status ?? null : null,
           journalEntryId: a.journalEntryId,
           jeStatus: a.jeStatus ?? "draft",
           approvedAt: a.approvedAt ? a.approvedAt.toISOString() : null,
@@ -133,6 +154,20 @@ export async function approveAccrualJE(journalEntryId: string) {
       .returning({ id: journalEntries.id })
   );
   if (updated.length === 0) throw new Error("Only a draft entry can be approved.");
+  revalidatePath("/finance/accruals");
+  return { success: true };
+}
+
+export async function generateReversalAction(accrualId: string) {
+  const user = await requireSurface("finance");
+  await generateReversal(user.orgId, accrualId);
+  revalidatePath("/finance/accruals");
+  return { success: true };
+}
+
+export async function generateTrueUpAction(accrualId: string) {
+  const user = await requireSurface("finance");
+  await generateTrueUp(user.orgId, accrualId);
   revalidatePath("/finance/accruals");
   return { success: true };
 }
