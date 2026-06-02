@@ -25,6 +25,10 @@ import {
   cronCommitmentAlerts,
   commitmentAlertsForOrg,
 } from "@/lib/jobs/commitment-alerts";
+import {
+  cronMarginAlerts,
+  marginAlertsForOrg,
+} from "@/lib/jobs/margin-alerts";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -37,6 +41,8 @@ export const { GET, POST, PUT } = serve({
     syncInvoicesForOrg,
     cronCommitmentAlerts,
     commitmentAlertsForOrg,
+    cronMarginAlerts,
+    marginAlertsForOrg,
     helloWorld,
     ingestProviderKey,
     orchestrateIngestion,

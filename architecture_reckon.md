@@ -526,6 +526,23 @@ Verified by `scripts/test-outcomes.ts`: exact value scaling (incl. malformed/ove
 
 ---
 
+## 5h. Unit economics & margin (Phase 12.2, playbook §7a)
+
+Pairs AI cost (the denominator Reckon has at workflow/customer/product-line grain) with the customer-supplied outcomes (§5g numerators) to answer "is it worth it?". Read/compute only. `lib/unit-economics/compute.ts` (pure helpers + `getUnitEconomics`), `lib/unit-economics/margin-alerts.ts`, `lib/slack/messages/margin.ts`, Inngest `lib/jobs/margin-alerts.ts`. Views: `(finance)/finance/unit-economics` (board number, margin by product line, customer/workflow cost-per-unit, reconciliation) and a **ROI** tab on `(workflows)/workflows` (cost per run vs outcome).
+
+**Exact formulas.** Cost is bigint micros; outcome `value` is stored scaled ×1e6 (§5g), so a money outcome's stored value IS micros. Therefore:
+- **Cost per unit** ($/unit, returned as micros = $×1e6): `costMicros × 1e6 ÷ valueScaled`. The ×1e6 scaling cancels, so `$4200 / 9800 tickets → 428571 micros = $0.43/ticket`. **Null when there's no outcome** — never a fabricated ratio. Computed at customer, product_line, and workflow grain (each grain's metrics divided by that grain's cost).
+- **AI COGS % of revenue** (basis points, 10000 = 100%): `cogsMicros × 10000 ÷ revenueScaled`. The numerator is **only COGS-coded spend** — `sum(cost × allocation_pct) FILTER (gl_account.account_type = 'cogs') ÷ 10000`. A revenue metric is one whose unit is a money unit (`isRevenueUnit`: starts `usd`, contains `revenue`, or mrr/arr/gmv/bookings).
+- **Gross margin** (micros): `revenueScaled − cogsMicros`; **margin %** = `margin × 10000 ÷ revenueScaled`. Reported per product line and as the org board number.
+
+**Cost sourcing & reconciliation.** Per-workflow/customer cost comes from `usage_attribution` joined to `usage_events`; per-product-line and COGS from `cost_allocations` weighted by `allocation_pct` (÷10000, LEFT JOIN so uncoded events still count). `getUnitEconomics` returns a `reconciliation` block proving the **allocated grand total equals raw usage exactly** (and reports attributed customer/workflow totals). Outcome values are matched to the cost window by `period_start ≥ from AND period_end ≤ to` (no fabrication outside the window).
+
+**Margin alerts** (`evaluateMargin`, pure → `detectMarginAlerts`). For any customer/workflow/product line with a revenue outcome: `negative_margin` (critical) when AI cost > revenue — margin at risk = the overage; `erosion` (warn) when AI cost ≥ a threshold share of revenue (default 80%). No revenue → no verdict. The weekly Inngest sweep (`cron-margin-alerts` → `margin-alerts-for-org`, 06:00 UTC Mon) posts to Slack and files a Linear issue on critical (Pro only), reusing Phase 5 plumbing; the weekly cadence is the throttle (no per-item dedup state persisted).
+
+Verified by `scripts/test-unit-economics.ts` (23 checks): cost-per-unit at all three grains, COGS % using only COGS-coded spend (not total), the customer cost-exceeds-revenue alert with correct margin-at-risk, missing-outcome honesty (empty metrics, null ratios), and exact reconciliation to underlying usage.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

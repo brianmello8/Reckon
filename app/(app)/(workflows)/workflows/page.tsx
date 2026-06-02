@@ -6,6 +6,7 @@ import {
   getAgentsOverview,
   getCustomerCosts,
 } from "../queries";
+import { getUnitEconomics } from "@/lib/unit-economics/compute";
 import { WorkflowsClient } from "./workflows-client";
 
 export default async function WorkflowsPage({
@@ -16,10 +17,11 @@ export default async function WorkflowsPage({
   const user = await requireSurface("workflows");
   const { range, from, to } = resolveRange((await searchParams).range);
 
-  const [workflows, agents, customers] = await Promise.all([
+  const [workflows, agents, customers, economics] = await Promise.all([
     getWorkflowsOverview(user.orgId, from, to),
     getAgentsOverview(user.orgId, from, to),
     getCustomerCosts(user.orgId, from, to),
+    getUnitEconomics(user.orgId, from, to),
   ]);
 
   return (
@@ -33,6 +35,7 @@ export default async function WorkflowsPage({
         workflows={workflows}
         agents={agents}
         customers={customers}
+        roi={economics.workflows}
       />
     </div>
   );

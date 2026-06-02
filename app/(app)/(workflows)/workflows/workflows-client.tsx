@@ -24,6 +24,15 @@ type AgentRow = {
   workflowCount: number;
 };
 type CustomerRow = { customerRef: string; costMicros: number };
+type RoiMetric = { key: string; name: string; unit: string; valueScaled: string; costPerUnitMicros: string | null };
+type RoiRow = {
+  id: string;
+  name: string;
+  costMicros: string;
+  runCount: number;
+  costPerRunMicros: string | null;
+  metrics: RoiMetric[];
+};
 
 const RANGES: { key: string; label: string }[] = [
   { key: "7d", label: "7d" },
@@ -37,13 +46,15 @@ export function WorkflowsClient({
   workflows,
   agents,
   customers,
+  roi,
 }: {
   range: string;
   workflows: WorkflowRow[];
   agents: AgentRow[];
   customers: CustomerRow[];
+  roi: RoiRow[];
 }) {
-  const [tab, setTab] = React.useState<"workflows" | "agents" | "customers">(
+  const [tab, setTab] = React.useState<"workflows" | "agents" | "customers" | "roi">(
     "workflows"
   );
   const router = useRouter();
@@ -59,7 +70,7 @@ export function WorkflowsClient({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
-          {(["workflows", "agents", "customers"] as const).map((t) => (
+          {(["workflows", "agents", "customers", "roi"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -69,7 +80,7 @@ export function WorkflowsClient({
                   : "text-ink-3 hover:bg-bg-2 hover:text-ink"
               }`}
             >
-              {t}
+              {t === "roi" ? "ROI" : t}
             </button>
           ))}
         </div>
@@ -131,6 +142,31 @@ export function WorkflowsClient({
           head={["Customer", "Total"]}
           empty="No per-customer attribution yet. Runs carry a customer ref when your observability data includes one."
           rows={customers.map((c) => [c.customerRef, money(c.costMicros)])}
+        />
+      )}
+
+      {tab === "roi" && (
+        <Table
+          head={["Workflow", "AI cost", "Runs", "Cost / run", "Cost per outcome"]}
+          empty="No workflow ROI yet. Define a workflow-grain outcome metric on Finance → Outcomes, then load values to see cost per outcome."
+          rows={roi.map((w) => [
+            <span key="n" className="font-medium text-ink">{w.name}</span>,
+            money(Number(w.costMicros)),
+            String(w.runCount),
+            w.costPerRunMicros ? money(Number(w.costPerRunMicros)) : "—",
+            w.metrics.length === 0 ? (
+              <span key="m" className="text-ink-3">no outcome data</span>
+            ) : (
+              <span key="m" className="space-y-0.5">
+                {w.metrics.map((m) => (
+                  <span key={m.key} className="block">
+                    {m.costPerUnitMicros ? fmtMoney(microsToDollars(Number(m.costPerUnitMicros))) : "—"}
+                    <span className="text-ink-3"> / {m.unit.replace(/_/g, " ")}</span>
+                  </span>
+                ))}
+              </span>
+            ),
+          ])}
         />
       )}
     </div>
