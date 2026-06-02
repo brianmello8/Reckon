@@ -48,6 +48,7 @@ type Invoice = {
 
 const money = (m: string | number) => fmtMoney(microsToDollars(Number(m)));
 const signed = (m: string) => (Number(m) > 0 ? "+" : "") + money(m);
+const signedD = (v: number) => (v < 0 ? "−" : "+") + fmtMoney(Math.abs(v));
 
 const TYPE_LABEL: Record<string, string> = {
   untracked_keys: "Untracked keys",
@@ -176,16 +177,21 @@ function ReconCard({ r }: { r: Recon }) {
         <Stat label="Delta" value={signed(r.delta)} accent={Number(r.delta) !== 0} />
       </div>
 
-      <div className="mt-3">
-        <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-3">Waterfall</div>
+      <div className="mt-4">
+        <div className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-ink-3">
+          Waterfall <span className="font-normal normal-case text-ink-3">— how the {signed(r.delta)} delta is explained</span>
+        </div>
         {r.discrepancies.length === 0 ? (
           <p className="text-sm text-emerald-600">Exact match — no delta to explain. ✓</p>
         ) : (
-          <div className="divide-y divide-line rounded-lg border border-line">
-            {r.discrepancies.map((d) => (
-              <DiscRow key={d.id} d={d} />
-            ))}
-          </div>
+          <>
+            <Waterfall discrepancies={r.discrepancies} />
+            <div className="mt-3 divide-y divide-line rounded-lg border border-line">
+              {r.discrepancies.map((d) => (
+                <DiscRow key={d.id} d={d} />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
@@ -207,6 +213,60 @@ function ReconCard({ r }: { r: Recon }) {
       {hasMissingCredit && (
         <p className="mt-1 text-[12px] text-amber-700">A promised credit is missing from this invoice — consider disputing.</p>
       )}
+    </div>
+  );
+}
+
+/** Floating waterfall: each discrepancy steps the running total; the bars build
+ * from zero to the net explained delta. Credits/reductions step down (green),
+ * additions step up (coral), an unexplained "unknown" is red. */
+function Waterfall({ discrepancies }: { discrepancies: Disc[] }) {
+  const items = discrepancies.map((d) => ({
+    type: d.type,
+    label: TYPE_LABEL[d.type] ?? d.type,
+    v: microsToDollars(Number(d.amount)),
+  }));
+  // Prefix sums (no mutable accumulator — keeps render pure). n ≤ 8.
+  const cum = items.map((_, i) => items.slice(0, i + 1).reduce((a, x) => a + x.v, 0));
+  const bars = items.map((it, i) => ({ ...it, from: i === 0 ? 0 : cum[i - 1], to: cum[i] }));
+  const vals = [0, ...bars.flatMap((b) => [b.from, b.to])];
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const range = hi - lo || 1;
+
+  const H = 158, padTop = 16, padBot = 30, colW = 64, barW = 30, left = 10;
+  const W = Math.max(340, left * 2 + bars.length * colW);
+  const y = (v: number) => padTop + (1 - (v - lo) / range) * (H - padTop - padBot);
+  const zeroY = y(0);
+  const colorFor = (b: { type: string; v: number }) =>
+    b.type === "unknown" ? "var(--sev-crit)" : b.v < 0 ? "var(--pos)" : "var(--brand)";
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-line bg-bg-2/40 p-2">
+      <svg width={W} height={H} className="block">
+        <line x1={4} x2={W - 4} y1={zeroY} y2={zeroY} stroke="var(--line-2)" strokeDasharray="3 3" />
+        {bars.map((b, i) => {
+          const x = left + i * colW + (colW - barW) / 2;
+          const top = y(Math.max(b.from, b.to));
+          const h = Math.max(2, Math.abs(y(b.from) - y(b.to)));
+          const nextX = left + (i + 1) * colW + (colW - barW) / 2;
+          const labelY = Math.min(y(b.from), y(b.to)) - 5;
+          return (
+            <g key={i}>
+              <rect x={x} y={top} width={barW} height={h} rx={2} fill={colorFor(b)} opacity={0.9} />
+              {i < bars.length - 1 && (
+                <line x1={x + barW} x2={nextX} y1={y(b.to)} y2={y(b.to)} stroke="var(--line-2)" />
+              )}
+              <text x={x + barW / 2} y={labelY} textAnchor="middle" fontSize="9.5" fill="var(--ink-2)" style={{ fontVariantNumeric: "tabular-nums" }}>
+                {signedD(b.v)}
+              </text>
+              <text x={x + barW / 2} y={H - 14} textAnchor="middle" fontSize="9" fill="var(--ink-3)">
+                {b.label.length > 11 ? b.label.slice(0, 10) + "…" : b.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

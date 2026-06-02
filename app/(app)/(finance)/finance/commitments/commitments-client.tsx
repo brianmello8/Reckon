@@ -164,17 +164,23 @@ function CommitmentCard({ c, onEdit }: { c: Commitment; onEdit: () => void }) {
           <div className="mb-1 text-[12px] font-medium text-ink-3">Drawdown vs commitment</div>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={chart}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-              <XAxis dataKey="date" fontSize={11} />
-              <YAxis tickFormatter={fmtCompact} fontSize={11} width={48} />
+              <defs>
+                <linearGradient id="drawdownFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--brand)" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="var(--brand)" stopOpacity={0.03} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+              <XAxis dataKey="date" fontSize={11} stroke="var(--ink-4)" />
+              <YAxis tickFormatter={fmtCompact} fontSize={11} width={48} stroke="var(--ink-4)" />
               <Tooltip formatter={(v) => fmtMoney(Number(v))} />
               <ReferenceLine
                 y={amountDollars}
-                stroke="#ef4444"
+                stroke="var(--neg)"
                 strokeDasharray="4 4"
-                label={{ value: "commitment", fontSize: 10, fill: "#ef4444", position: "insideTopRight" }}
+                label={{ value: "commitment", fontSize: 10, fill: "var(--neg)", position: "insideTopRight" }}
               />
-              <Area dataKey="cum" name="cumulative" stroke="#6366f1" fill="#6366f133" />
+              <Area dataKey="cum" name="cumulative" stroke="var(--brand)" strokeWidth={2} fill="url(#drawdownFill)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
