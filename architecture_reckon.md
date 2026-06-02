@@ -507,6 +507,25 @@ Verified by `scripts/test-accrual-loop.ts` (pure): reversal nets to zero on ever
 
 ---
 
+## 5g. Outcome metrics — the unit-economics numerators (Phase 12.1, playbook §7)
+
+The CFO question shifts from "where did it go?" to "is it worth it?". Reckon already has the **cost** (denominator) at workflow/customer granularity; the customer supplies the **outcome** (numerator) here, and Phase 12.2 divides them into a unit economic. `lib/outcomes/ingest.ts`, `lib/tokens/ingest-token.ts`, route `app/api/ingest/outcomes`, UI `(finance)/finance/outcomes`.
+
+**Tables (org-scoped, RLS).**
+- `outcome_metrics(key, name, unit, grain, direction)` — the definition. `grain ∈ {customer, product_line, workflow, org}`; `direction ∈ {higher_is_better, lower_is_better}`. Unique on `(org_id, key)`.
+- `outcome_values(metric_id, grain_ref, period_start, period_end, value, source)` — one value per `(metric, grain_ref, period)`. `grain_ref` is the `customerRef` (text) / `product_line_id` / `workflow_id` the value is for; **`''` for org-grain** (NOT NULL, so the unique index + `ON CONFLICT` upsert target stay well-defined — Postgres treats NULL as distinct, which would defeat idempotency). `source ∈ {manual, csv, api}`.
+- `ingest_tokens(name, token_hash, token_prefix, scope, status)` — scoped org-level bearer tokens for programmatic push. We store only a **SHA-256 hash + display prefix**, never the plaintext (same no-plaintext-secret rule as provider keys); the plaintext is shown once at creation.
+
+**Value scaling.** `value` (bigint) is stored **scaled ×1,000,000 — the micros convention — for ALL units**, not just money. Parsing (`parseScaledValue`) is integer-only (no float): `"1200.50" → 1_200_500_000`, `"9800" tickets → 9_800_000_000`. This keeps money exact to the cent and makes Phase 12.2 ratios self-normalize: `cost_micros / value` yields dollars-per-unit directly, and `cogs_micros / revenue_micros` is a pure ratio (the ×1e6 cancels).
+
+**Idempotent ingest.** `upsertOutcomeValues` is `ON CONFLICT (metric_id, grain_ref, period_start, period_end) DO UPDATE` (last-write-wins on value + source) — re-loading a period overwrites, never duplicates. The same upsert backs all three paths: manual entry, client-parsed CSV (header-mapped → `grain_ref, period_start, period_end, value`), and the API.
+
+**API ingest** (`POST /api/ingest/outcomes`, `Authorization: Bearer <token>`). The token is hashed and looked up (the app DB role bypasses RLS, so this runs before any org context); org is taken **from the token**, never the request body. Body `{ values: [{ metricKey, grainRef?, periodStart, periodEnd, value }] }` (≤1000), zod-validated; grain consistency is enforced (org-grain rejects a `grainRef`; non-org requires one). Writes upsert with `source = "api"` inside `withOrgContext`.
+
+Verified by `scripts/test-outcomes.ts`: exact value scaling (incl. malformed/over-precision rejection), idempotent overwrite binding to the right grain+period, the API route (401 no-token / 422 unknown-key / 422 grain-mismatch / 200 accepted + correct scaled storage), and RLS policy presence on all three tables.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

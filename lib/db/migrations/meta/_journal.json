@@ -176,6 +176,13 @@
       "when": 1780358693758,
       "tag": "0024_lazy_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780359565721,
+      "tag": "0025_strong_vermin",
+      "breakpoints": true
     }
   ]
 }

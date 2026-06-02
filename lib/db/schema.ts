@@ -186,6 +186,20 @@ export const discrepancyTypeEnum = pgEnum("discrepancy_type", [
   "unknown",
 ]);
 
+// Outcome metrics (Phase 12.1, §7) — the numerators for unit economics.
+export const outcomeGrainEnum = pgEnum("outcome_grain", [
+  "customer",
+  "product_line",
+  "workflow",
+  "org",
+]);
+export const outcomeDirectionEnum = pgEnum("outcome_direction", [
+  "higher_is_better",
+  "lower_is_better",
+]);
+export const outcomeSourceEnum = pgEnum("outcome_source", ["manual", "csv", "api"]);
+export const ingestTokenStatusEnum = pgEnum("ingest_token_status", ["active", "revoked"]);
+
 // --- Tables ---
 
 export const organizations = pgTable("organizations", {
@@ -1261,6 +1275,88 @@ export const developerInvites = pgTable("developer_invites", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   claimedAt: timestamp("claimed_at", { withTimezone: true }),
 });
+
+// Outcome metric definitions (Phase 12.1, §7). Reckon supplies the cost
+// (denominator); the customer supplies the outcome (numerator) via these.
+export const outcomeMetrics = pgTable(
+  "outcome_metrics",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    key: text("key").notNull(), // stable slug, e.g. "usd_revenue"
+    name: text("name").notNull(),
+    unit: text("unit").notNull(), // e.g. usd_revenue, tickets_closed, docs_processed
+    grain: outcomeGrainEnum("grain").notNull(),
+    direction: outcomeDirectionEnum("direction").notNull().default("higher_is_better"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_outcome_metrics_org_key").on(t.orgId, t.key)]
+);
+
+// Outcome values bound to a grain ref + period (Phase 12.1, §7).
+// `value` is stored scaled ×1,000,000 (the micros convention) for ALL units, so
+// money is exact to the cent and unit-economics ratios (cost_micros / value)
+// self-normalize regardless of unit. `grainRef` is the customerRef (text) /
+// product_line_id / workflow_id this value is for; null for org-grain metrics.
+export const outcomeValues = pgTable(
+  "outcome_values",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    metricId: uuid("metric_id")
+      .notNull()
+      .references(() => outcomeMetrics.id),
+    // The customerRef / product_line_id / workflow_id this value is for.
+    // Empty string '' for org-grain metrics (NOT NULL keeps the unique index
+    // and ON CONFLICT upsert target well-defined — Postgres treats NULL as
+    // distinct, which would defeat idempotency).
+    grainRef: text("grain_ref").notNull().default(""),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    value: bigint("value", { mode: "bigint" }).notNull(), // scaled ×1e6
+    source: outcomeSourceEnum("source").notNull().default("manual"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // Idempotent upsert key: one value per (metric, grain ref, period).
+    // grain_ref NULLs collapse to '' (see migration) so org-grain stays unique.
+    uniqueIndex("uniq_outcome_values_metric_ref_period").on(
+      t.metricId,
+      t.grainRef,
+      t.periodStart,
+      t.periodEnd
+    ),
+    index("idx_outcome_values_org_metric").on(t.orgId, t.metricId),
+  ]
+);
+
+// Scoped, org-level bearer tokens for programmatic ingest (Phase 12.1, §7).
+// We store only a SHA-256 hash + a display prefix — never the plaintext token
+// (same no-plaintext-secret rule as provider keys).
+export const ingestTokens = pgTable(
+  "ingest_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    tokenPrefix: text("token_prefix").notNull(), // first chars, for display only
+    scope: text("scope").notNull().default("outcomes"),
+    status: ingestTokenStatusEnum("status").notNull().default("active"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_ingest_tokens_hash").on(t.tokenHash)]
+);
 
 // --- Relations ---
 
