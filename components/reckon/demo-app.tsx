@@ -23,10 +23,11 @@ type Screen =
   | "commitments" | "periods" | "accruals" | "outcomes" | "unit-economics" | "erp-codes" | "export";
 
 type Anomaly = (typeof MOCK.anomalies)[number];
-type NavItem = { id: Screen; label: string; icon: typeof Users; badge?: boolean };
+type NavItem = { id: Screen; label: string; icon: typeof Users; badge?: boolean; pro?: boolean };
 
 // Mirrors app/(app)/sidebar.tsx exactly — same groups, labels, order, icons.
-const NAV_SECTIONS: { section: string; items: NavItem[] }[] = [
+// Primary sidebar (mirrors the app): Operations + Workflows + a single Finance entry.
+const PRIMARY: { section: string; items: NavItem[] }[] = [
   {
     section: "Operations",
     items: [
@@ -39,31 +40,67 @@ const NAV_SECTIONS: { section: string; items: NavItem[] }[] = [
     ],
   },
   { section: "Workflows", items: [{ id: "workflows", label: "Workflows", icon: Workflow }] },
-  {
-    section: "Pro Finance",
-    items: [
-      { id: "finance", label: "Finance", icon: Landmark },
-      { id: "dimensions", label: "Dimensions", icon: FolderTree },
-      { id: "coding", label: "Coding", icon: Tags },
-      { id: "invoices", label: "Invoices", icon: FileText },
-      { id: "reconciliation", label: "Reconciliation", icon: Scale },
-      { id: "forecast", label: "Forecast", icon: TrendingUp },
-      { id: "commitments", label: "Commitments", icon: Wallet },
-      { id: "periods", label: "Periods", icon: CalendarClock },
-      { id: "accruals", label: "Accruals", icon: BookText },
-      { id: "outcomes", label: "Outcomes", icon: Target },
-      { id: "unit-economics", label: "Unit economics", icon: Gauge },
-      { id: "erp-codes", label: "ERP codes", icon: ListTree },
-      { id: "export", label: "Export", icon: FileDown },
-    ],
-  },
 ];
-const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
+const FINANCE_ITEM: NavItem = { id: "finance", label: "Finance", icon: Landmark, pro: true };
+
+// Secondary finance rail, grouped into the four close stages (mirrors finance-shell.tsx).
+const FIN_RAIL: { group: string; items: NavItem[] }[] = [
+  { group: "Allocate", items: [
+    { id: "finance", label: "Finance", icon: Landmark },
+    { id: "coding", label: "Coding", icon: Tags },
+    { id: "dimensions", label: "Dimensions", icon: FolderTree },
+    { id: "erp-codes", label: "ERP codes", icon: ListTree },
+  ] },
+  { group: "Verify", items: [
+    { id: "invoices", label: "Invoices", icon: FileText },
+    { id: "reconciliation", label: "Reconciliation", icon: Scale },
+    { id: "commitments", label: "Commitments", icon: Wallet },
+    { id: "forecast", label: "Forecast", icon: TrendingUp },
+  ] },
+  { group: "Close", items: [
+    { id: "accruals", label: "Accruals", icon: BookText },
+    { id: "periods", label: "Periods", icon: CalendarClock },
+    { id: "export", label: "Export", icon: FileDown },
+  ] },
+  { group: "Analyze", items: [
+    { id: "unit-economics", label: "Unit economics", icon: Gauge },
+    { id: "outcomes", label: "Outcomes", icon: Target },
+  ] },
+];
+const FIN_ITEMS = FIN_RAIL.flatMap((g) => g.items);
+const FINANCE_IDS = new Set<Screen>(FIN_ITEMS.map((i) => i.id));
+const ALL_ITEMS = [...PRIMARY.flatMap((s) => s.items), ...FIN_ITEMS]; // mobile flat nav
 
 export function DemoApp() {
   const [screen, setScreen] = React.useState<Screen>("dashboard");
   const [anomalies, setAnomalies] = React.useState<Anomaly[]>(MOCK.anomalies);
   const unack = anomalies.length;
+  const onFin = FINANCE_IDS.has(screen);
+
+  const renderScreen = () => {
+    switch (screen) {
+      case "dashboard": return <DashboardClient data={MOCK.dashboard} range="30d" orgName="Northwind" recentAnomalies={MOCK.recentAnomalies} demo />;
+      case "developers": return <DemoDevelopers />;
+      case "providers": return <DemoProviders />;
+      case "observability": return <DemoObservability />;
+      case "anomalies": return <DemoAnomalies anomalies={anomalies} onAck={(id) => setAnomalies((a) => a.filter((x) => x.id !== id))} onReset={() => setAnomalies(MOCK.anomalies)} />;
+      case "integrations": return <DemoIntegrations />;
+      case "workflows": return <DemoWorkflows />;
+      case "finance": return <DemoFinance />;
+      case "dimensions": return <DemoDimensions />;
+      case "coding": return <DemoCoding />;
+      case "invoices": return <DemoInvoices />;
+      case "reconciliation": return <DemoReconciliation />;
+      case "forecast": return <DemoForecast />;
+      case "commitments": return <DemoCommitments />;
+      case "periods": return <DemoPeriods />;
+      case "accruals": return <DemoAccruals />;
+      case "outcomes": return <DemoOutcomes />;
+      case "unit-economics": return <DemoUnitEconomics />;
+      case "erp-codes": return <DemoErpCodes />;
+      case "export": return <DemoExport />;
+    }
+  };
 
   const navButton = (item: NavItem, mobile = false) => {
     const on = screen === item.id;
@@ -93,12 +130,24 @@ export function DemoApp() {
       <aside className="hidden w-[232px] shrink-0 flex-col border-r border-line bg-paper lg:flex">
         <div className="flex h-[60px] items-center border-b border-line px-[18px]"><Logo /></div>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-          {NAV_SECTIONS.map((sec, i) => (
+          {PRIMARY.map((sec, i) => (
             <div key={sec.section} className={i > 0 ? "mt-3" : ""}>
               <div className="px-[11px] pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-3/70">{sec.section}</div>
               {sec.items.map((item) => navButton(item))}
             </div>
           ))}
+          <div className="mt-3">
+            <div className="px-[11px] pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-3/70">Pro Finance</div>
+            <button
+              onClick={() => setScreen("finance")}
+              className={`relative flex w-full items-center gap-[11px] rounded-[9px] px-[11px] py-2 text-left text-[13.5px] font-medium transition-colors ${onFin ? "bg-bg-2 text-ink" : "text-ink-3 hover:bg-bg-2 hover:text-ink"}`}
+            >
+              {onFin && <span className="absolute -left-3 bottom-2 top-2 w-[3px] rounded-[3px] bg-brand" />}
+              <Landmark size={17} strokeWidth={onFin ? 2.2 : 1.9} />
+              {FINANCE_ITEM.label}
+              <span className="ml-auto rounded-[5px] border border-brand-line bg-brand-soft px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide text-brand-ink">Pro</span>
+            </button>
+          </div>
         </nav>
         <div className="border-t border-line p-3">
           <div className="rounded-xl border border-line bg-bg-2 p-3">
@@ -123,27 +172,29 @@ export function DemoApp() {
         <nav className="flex gap-1 overflow-x-auto border-b border-line bg-paper px-3 py-2 lg:hidden">{ALL_ITEMS.map((item) => navButton(item, true))}</nav>
 
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up" key={screen}>
-            {screen === "dashboard" && <DashboardClient data={MOCK.dashboard} range="30d" orgName="Northwind" recentAnomalies={MOCK.recentAnomalies} demo />}
-            {screen === "developers" && <DemoDevelopers />}
-            {screen === "providers" && <DemoProviders />}
-            {screen === "observability" && <DemoObservability />}
-            {screen === "anomalies" && <DemoAnomalies anomalies={anomalies} onAck={(id) => setAnomalies((a) => a.filter((x) => x.id !== id))} onReset={() => setAnomalies(MOCK.anomalies)} />}
-            {screen === "integrations" && <DemoIntegrations />}
-            {screen === "workflows" && <DemoWorkflows />}
-            {screen === "finance" && <DemoFinance />}
-            {screen === "dimensions" && <DemoDimensions />}
-            {screen === "coding" && <DemoCoding />}
-            {screen === "invoices" && <DemoInvoices />}
-            {screen === "reconciliation" && <DemoReconciliation />}
-            {screen === "forecast" && <DemoForecast />}
-            {screen === "commitments" && <DemoCommitments />}
-            {screen === "periods" && <DemoPeriods />}
-            {screen === "accruals" && <DemoAccruals />}
-            {screen === "outcomes" && <DemoOutcomes />}
-            {screen === "unit-economics" && <DemoUnitEconomics />}
-            {screen === "erp-codes" && <DemoErpCodes />}
-            {screen === "export" && <DemoExport />}
+          <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up" key={onFin ? "finance" : screen}>
+            {onFin ? (
+              <>
+                {/* mobile finance rail */}
+                <div className="mb-4 flex gap-1 overflow-x-auto pb-1 lg:hidden">{FIN_ITEMS.map((it) => navButton(it, true))}</div>
+                <div className="lg:grid lg:grid-cols-[200px_1fr] lg:gap-7">
+                  <aside className="hidden lg:sticky lg:top-0 lg:block lg:self-start">
+                    <span className="mb-3 inline-flex items-center rounded-full border border-brand-line bg-brand-soft px-2.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-brand-ink">Pro Finance</span>
+                    <div className="flex flex-col gap-4">
+                      {FIN_RAIL.map((g) => (
+                        <div key={g.group}>
+                          <div className="px-[11px] pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-3/70">{g.group}</div>
+                          {g.items.map((it) => navButton(it))}
+                        </div>
+                      ))}
+                    </div>
+                  </aside>
+                  <div className="min-w-0" key={screen}>{renderScreen()}</div>
+                </div>
+              </>
+            ) : (
+              renderScreen()
+            )}
           </div>
         </main>
       </div>

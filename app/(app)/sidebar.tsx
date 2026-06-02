@@ -14,18 +14,6 @@ import {
   Activity,
   Workflow,
   Landmark,
-  FolderTree,
-  Tags,
-  FileText,
-  Scale,
-  TrendingUp,
-  Wallet,
-  CalendarClock,
-  BookText,
-  Target,
-  Gauge,
-  FileDown,
-  ListTree,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -38,6 +26,7 @@ type NavItem = {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
   badge?: boolean;
   exact?: boolean; // active only on exact match (for prefix-overlapping routes)
+  pro?: boolean; // shows a PRO pill when the org isn't on the add-on (upsell)
 };
 
 const SURFACE_NAV: Record<Surface, NavItem[]> = {
@@ -50,21 +39,9 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
     { href: "/integrations", label: "Integrations", icon: Plug },
   ],
   workflows: [{ href: "/workflows", label: "Workflows", icon: Workflow }],
-  finance: [
-    { href: "/finance", label: "Finance", icon: Landmark, exact: true },
-    { href: "/finance/dimensions", label: "Dimensions", icon: FolderTree },
-    { href: "/finance/coding", label: "Coding", icon: Tags },
-    { href: "/finance/invoices", label: "Invoices", icon: FileText },
-    { href: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
-    { href: "/finance/forecast", label: "Forecast", icon: TrendingUp },
-    { href: "/finance/commitments", label: "Commitments", icon: Wallet },
-    { href: "/finance/periods", label: "Periods", icon: CalendarClock },
-    { href: "/finance/accruals", label: "Accruals", icon: BookText },
-    { href: "/finance/outcomes", label: "Outcomes", icon: Target },
-    { href: "/finance/unit-economics", label: "Unit economics", icon: Gauge },
-    { href: "/finance/erp-codes", label: "ERP codes", icon: ListTree },
-    { href: "/finance/export", label: "Export", icon: FileDown },
-  ],
+  // A single primary entry; the 13 finance pages live in the secondary rail
+  // (finance-shell.tsx), grouped Allocate / Verify / Close / Analyze.
+  finance: [{ href: "/finance", label: "Finance", icon: Landmark, pro: true }],
 };
 
 export function Sidebar({
@@ -122,6 +99,11 @@ export function Sidebar({
         {item.badge && unackCount > 0 && (
           <span className="mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold text-white">
             {unackCount}
+          </span>
+        )}
+        {item.pro && !financeEnabled && (
+          <span className="ml-auto rounded-[5px] border border-brand-line bg-brand-soft px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide text-brand-ink">
+            Pro
           </span>
         )}
       </Link>

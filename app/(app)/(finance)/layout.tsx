@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser, hasSurface } from "@/lib/auth";
 import { Landmark } from "lucide-react";
+import { FinanceShell } from "./finance-shell";
 
 /**
  * Gate the Finance surface. 404 for members without the finance surface;
@@ -38,5 +39,5 @@ export default async function FinanceLayout({ children }: { children: React.Reac
     );
   }
 
-  return <>{children}</>;
+  return <FinanceShell>{children}</FinanceShell>;
 }

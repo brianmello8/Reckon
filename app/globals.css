@@ -94,11 +94,11 @@
   --line: #e7e3d8;
   --line-2: #d9d4c6;
 
-  /* clay-brown signal accent (shipped default) */
-  --brand: #c2742e;
-  --brand-ink: #9a5d24;
-  --brand-soft: #f9f1ea;
-  --brand-line: #e9cdb4;
+  /* coral signal accent — "the spike" */
+  --brand: #ff6b47;
+  --brand-ink: #d6411f;
+  --brand-soft: #fff0eb;
+  --brand-line: #ffd4c7;
 
   /* provider data colors */
   --p-anthropic: #c75c39;
@@ -157,10 +157,10 @@
   --line: #262d3d;
   --line-2: #323b4f;
 
-  --brand: #d2894a;
-  --brand-ink: #e0a574;
-  --brand-soft: #2a1f14;
-  --brand-line: #4a3526;
+  --brand: #ff7a5a;
+  --brand-ink: #ff9576;
+  --brand-soft: #2a1c1a;
+  --brand-line: #4a2c24;
 
   --p-anthropic: #e07a4e;
   --p-openai: #25b497;
