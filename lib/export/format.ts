@@ -1,5 +1,59 @@
 import { createHash } from "crypto";
-import type { ExportEntry } from "./types";
+import type { ExportEntry, ExportLine } from "./types";
+
+/** Round micros to whole cents, half-up away from zero (1 cent = 10_000 micros). */
+export function microsToCents(micros: bigint): bigint {
+  const neg = micros < 0n;
+  const abs = neg ? -micros : micros;
+  const cents = (abs + 5000n) / 10000n;
+  return neg ? -cents : cents;
+}
+
+/** Cents → "1234.56" (always 2 dp). */
+export function centsToDecimal(cents: bigint): string {
+  const neg = cents < 0n;
+  const abs = neg ? -cents : cents;
+  return (neg ? "-" : "") + (abs / 100n).toString() + "." + (abs % 100n).toString().padStart(2, "0");
+}
+
+/** Date reformatting for ERP imports. yyyy-mm-dd → mdy/dmy/iso. */
+export function formatDate(yyyymmdd: string, style: "mdy" | "dmy" | "iso"): string {
+  const [y, m, d] = yyyymmdd.split("-");
+  if (style === "mdy") return `${m}/${d}/${y}`;
+  if (style === "dmy") return `${d}/${m}/${y}`;
+  return yyyymmdd;
+}
+
+export type CentsLine = { line: ExportLine; debitCents: bigint; creditCents: bigint };
+
+/**
+ * Round every line of a JE to cents and absorb the sub-cent rounding residual on
+ * the largest debit line, so a JE balanced in micros stays balanced in cents (a
+ * hard ERP-import requirement). Deterministic: lines are assumed pre-sorted, the
+ * residual lands on the first largest-debit line.
+ */
+export function roundEntryToCents(entry: ExportEntry): CentsLine[] {
+  const lines: CentsLine[] = entry.lines.map((l) => ({
+    line: l,
+    debitCents: microsToCents(l.debitMicros),
+    creditCents: microsToCents(l.creditMicros),
+  }));
+  const debit = lines.reduce((a, x) => a + x.debitCents, 0n);
+  const credit = lines.reduce((a, x) => a + x.creditCents, 0n);
+  const diff = debit - credit;
+  if (diff !== 0n && lines.length > 0) {
+    let dIdx = -1;
+    for (let i = 0; i < lines.length; i++) if (dIdx < 0 || lines[i].debitCents > lines[dIdx].debitCents) dIdx = i;
+    if (dIdx >= 0 && lines[dIdx].debitCents > 0n) {
+      lines[dIdx].debitCents -= diff; // debits were `diff` too high → reduce
+    } else {
+      let cIdx = 0;
+      for (let i = 0; i < lines.length; i++) if (lines[i].creditCents > lines[cIdx].creditCents) cIdx = i;
+      lines[cIdx].creditCents += diff;
+    }
+  }
+  return lines;
+}
 
 /** Exact dollars from micros (no float): "4200.00", "0.428571". Min 2 dp. */
 export function microsToDecimal(micros: bigint): string {

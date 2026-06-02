@@ -1403,6 +1403,9 @@ export const exportBatches = pgTable(
     filename: text("filename").notNull(),
     mimetype: text("mimetype").notNull(),
     body: text("body").notNull(),
+    // Lines carrying a Reckon code with no real ERP-code mapping yet (Phase 13.3).
+    // Surfaced in the UI so an internal label is never silently shipped as final.
+    needsMappingCount: integer("needs_mapping_count").notNull().default(0),
     status: exportBatchStatusEnum("status").notNull().default("generated"),
     // Set (with a reason) when generated against a LOCKED Reckon period.
     lockOverrideReason: text("lock_override_reason"),

@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { and, eq, inArray, desc } from "drizzle-orm";
 import { getReportingTimezone } from "@/lib/close/cutoff";
-import { getExporter, type TargetFormat } from "./index";
+import { getExporter, validateExport, type TargetFormat } from "./index";
 import { externalBatchId, lineExternalId, sha256Hex } from "./format";
 import type { ExportEntry } from "./types";
 
@@ -81,9 +81,10 @@ export type GenerateInput = {
 };
 
 export type GenerateResult =
-  | { status: "ok"; batchId: string; externalBatchId: string; filename: string; contentHash: string }
+  | { status: "ok"; batchId: string; externalBatchId: string; filename: string; contentHash: string; needsMappingCount: number }
   | { status: "lock_required"; periodLabel: string }
   | { status: "empty" }
+  | { status: "invalid"; errors: string[] }
   | { status: "guard"; conflicts: { batchId: string; externalBatchId: string; downloadedAt: string | null; jeIds: string[] }[] };
 
 /** Generate (or refuse) an export batch. Returns a discriminated result rather
@@ -149,15 +150,23 @@ export async function generateExportBatch(orgId: string, input: GenerateInput): 
   const tz = await getReportingTimezone(orgId, period.entityId);
   const ebid = externalBatchId(orgId, input.periodId, jeIds);
   const entries = await buildEntries(db, orgId, input.periodId, jeIds);
-  const file = getExporter(input.targetFormat).format(entries, {
+  const meta = {
     periodLabel,
     periodStart: period.periodStart,
     periodEnd: period.periodEnd,
     timezone: tz,
     boundaryRule: BOUNDARY_RULE,
     externalBatchId: ebid,
-  });
+  };
+
+  // Per-format validator BLOCKS generation — never emit a structurally bad file.
+  const errors = validateExport(input.targetFormat, entries, meta);
+  if (errors.length > 0) return { status: "invalid", errors };
+
+  const file = getExporter(input.targetFormat).format(entries, meta);
   const contentHash = sha256Hex(file.body);
+  // Lines carrying a Reckon code with no real ERP-code mapping yet (13.3).
+  const needsMappingCount = entries.reduce((a, e) => a + e.lines.filter((l) => l.needsMapping).length, 0);
 
   return db.transaction(async (tx) => {
     // Supersede any conflicting non-superseded batches (confirmed by the caller).
@@ -173,6 +182,7 @@ export async function generateExportBatch(orgId: string, input: GenerateInput): 
         filename: file.filename,
         mimetype: file.mimetype,
         body: file.body,
+        needsMappingCount,
         status: "generated",
         lockOverrideReason: input.lockOverrideReason?.trim() || null,
         generatedByUserId: input.userId ?? null,
@@ -185,7 +195,7 @@ export async function generateExportBatch(orgId: string, input: GenerateInput): 
         .set({ status: "superseded", supersededByBatchId: batch.id, supersedeReason: "Re-exported with the same/overlapping JE set" })
         .where(and(eq(exportBatches.orgId, orgId), inArray(exportBatches.id, supersedeIds)));
     }
-    return { status: "ok" as const, batchId: batch.id, externalBatchId: ebid, filename: file.filename, contentHash };
+    return { status: "ok" as const, batchId: batch.id, externalBatchId: ebid, filename: file.filename, contentHash, needsMappingCount };
   });
 }
 
@@ -287,6 +297,7 @@ export async function getExportView(orgId: string) {
       contentHash: b.contentHash.slice(0, 12),
       status: b.status,
       jeCount: countByBatch.get(b.id) ?? 0,
+      needsMappingCount: b.needsMappingCount,
       lockOverrideReason: b.lockOverrideReason,
       supersedeReason: b.supersedeReason,
       generatedAt: b.generatedAt.toISOString(),

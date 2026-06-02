@@ -204,6 +204,13 @@
       "when": 1780425850246,
       "tag": "0028_useful_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1780426808600,
+      "tag": "0029_yielding_ultimo",
+      "breakpoints": true
     }
   ]
 }

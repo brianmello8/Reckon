@@ -30,6 +30,7 @@ type Batch = {
   contentHash: string;
   status: string;
   jeCount: number;
+  needsMappingCount: number;
   lockOverrideReason: string | null;
   supersedeReason: string | null;
   generatedAt: string;
@@ -38,14 +39,13 @@ type Batch = {
 };
 type View = { periods: Period[]; batches: Batch[] };
 
-// Only generic_csv is implemented in 13.1; ERP templates arrive in 13.2.
-const FORMATS: { key: TargetFormat; label: string; ready: boolean }[] = [
-  { key: "generic_csv", label: "Generic CSV", ready: true },
-  { key: "qbo_iif", label: "QuickBooks IIF (13.2)", ready: false },
-  { key: "netsuite_csv", label: "NetSuite CSV (13.2)", ready: false },
-  { key: "intacct_csv", label: "Intacct CSV (13.2)", ready: false },
-  { key: "xero_csv", label: "Xero CSV (13.2)", ready: false },
-  { key: "spend_splits_csv", label: "Spend splits CSV (13.2)", ready: false },
+const FORMATS: { key: TargetFormat; label: string }[] = [
+  { key: "generic_csv", label: "Generic CSV" },
+  { key: "qbo_iif", label: "QuickBooks IIF" },
+  { key: "netsuite_csv", label: "NetSuite CSV" },
+  { key: "intacct_csv", label: "Intacct CSV" },
+  { key: "xero_csv", label: "Xero CSV" },
+  { key: "spend_splits_csv", label: "Spend splits (Ramp/Brex)" },
 ];
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive"> = {
@@ -86,10 +86,13 @@ export function ExportClient({ view }: { view: View }) {
       if (res.status === "ok") {
         const file = await downloadBatchAction(res.batchId);
         triggerDownload(file);
-        toast.success(`Generated ${res.externalBatchId} (hash ${res.contentHash.slice(0, 8)}…) — downloaded`);
+        const flag = res.needsMappingCount > 0 ? ` · ${res.needsMappingCount} line(s) need real-code mapping` : "";
+        toast.success(`Generated ${res.externalBatchId} (hash ${res.contentHash.slice(0, 8)}…) — downloaded${flag}`);
         router.refresh();
       } else if (res.status === "empty") {
         toast.error("No approved entries to export in this period.");
+      } else if (res.status === "invalid") {
+        toast.error(`Validation blocked this format: ${res.errors.slice(0, 3).join("; ")}${res.errors.length > 3 ? "…" : ""}`);
       } else if (res.status === "lock_required") {
         const reason = window.prompt(
           `Period ${res.periodLabel} is LOCKED. Enter a reason to override and export anyway:`
@@ -158,7 +161,7 @@ export function ExportClient({ view }: { view: View }) {
                 onChange={(e) => setFormat((f) => ({ ...f, [p.id]: e.target.value as TargetFormat }))}
               >
                 {FORMATS.map((f) => (
-                  <option key={f.key} value={f.key} disabled={!f.ready}>{f.label}</option>
+                  <option key={f.key} value={f.key}>{f.label}</option>
                 ))}
               </select>
               <Button size="sm" disabled={busy === p.id || p.approvedCount === 0} onClick={() => generate(p.id)}>
@@ -198,6 +201,9 @@ export function ExportClient({ view }: { view: View }) {
                     <tr key={b.id} className="border-t border-line align-top">
                       <td className="px-3 py-1.5 font-mono text-[11.5px] text-ink-2">
                         {b.externalBatchId}
+                        {b.needsMappingCount > 0 && (
+                          <div className="text-[11px] text-amber-600">⚠ {b.needsMappingCount} line(s) carry Reckon codes — map real ERP codes (13.3)</div>
+                        )}
                         {b.lockOverrideReason && <div className="text-[11px] text-amber-600">lock override: {b.lockOverrideReason}</div>}
                         {b.supersedeReason && <div className="text-[11px] text-ink-3">superseded: {b.supersedeReason}</div>}
                       </td>

@@ -561,6 +561,28 @@ Verified by `scripts/test-export-engine.ts` (17 checks): generate + downloadable
 
 ---
 
+## 5j. Per-target export templates (Phase 13.2, playbook §9a)
+
+The five system-specific formatters registered alongside `generic_csv` (`lib/export/erp.ts`), each a PURE function from the canonical JE to that system's published import shape, plus a blocking validator (`lib/export/validate.ts`). Built to the documented column contract.
+
+**Shared rules.** Posting date = the period end. Amounts are rounded to cents with the sub-cent residual absorbed on the largest debit line (`roundEntryToCents`) so a JE balanced in micros stays balanced in cents. Dimension columns carry whatever code the line holds — Reckon's code until §5k (13.3) maps a real ERP code — and `export_batches.needs_mapping_count` records how many lines still carry a Reckon code so the **UI flags it; an internal label is never silently shipped as final**. Output is byte-deterministic (round-trips through the §5i `content_hash`).
+
+**Column contracts.**
+- **`generic_csv`** — the reference (§5i): one row per line, exact micros (not cents), `needs_mapping` column inline.
+- **`qbo_iif`** — QuickBooks Desktop IIF general journal. `!TRNS/!SPL/!ENDTRNS` blocks, tab-delimited; first line of each JE → `TRNS`, rest → `SPL`; `AMOUNT` signed (debit +, credit −) summing to 0; `ACCNT` = GL name, `CLASS` = cost center, `DOCNUM` = JE id prefix.
+- **`netsuite_csv`** — CSV journal import: `External ID, Date(MDY), Account, Memo, Debit, Credit, Department(cost center), Class(project), Location(entity)`. One `External ID` per JE groups its lines.
+- **`intacct_csv`** — GL journal CSV: `Journal(=GJ), Date(MDY), Reference(=batch id), Line, GL Account, Debit, Credit, Memo, Location(entity), Department(cost center), Project`.
+- **`xero_csv`** — manual-journal CSV: `Narration, Date(DMY), Description, AccountCode, TaxRate(=No VAT), Amount(signed), TrackingName1/Option1(Cost Center), TrackingName2/Option2(Project)`. Lines group by `Narration`+`Date`.
+- **`spend_splits_csv`** — Ramp/Brex coded split, **NOT a JE**: re-codes the period's AI expense (the JE's debit lines only; credit/liability excluded) into `Vendor, Date, Total Amount, Split Amount, Split %, GL Account, Cost Center, Memo`. Percentages use largest-remainder so they sum to exactly 100.00.
+
+**Validators (block generation).** `generic_csv` → balanced in micros. The four GL-journal formats → balanced micros **and** cents, plus every line has a GL account code. `spend_splits_csv` → each entry has ≥1 expense line and every split line has a GL account. A non-empty error list refuses the batch (no invalid file is ever written).
+
+**Real-import caveat.** These are built to each system's published column contract and verified for determinism, balance, and structure — but **importing each file into the live ERP/sandbox is a manual verification step** (Reckon can't authenticate into those tools; that's the whole point of export-first). The playbook's stop-and-ask applies: validate a generated file through the actual import before relying on a format. `qbo_iif` targets QuickBooks **Desktop** (IIF); QBO-online journal import differs and would be a separate format if a customer needs it. Tax-rate/tracking-category/segment names (e.g. Xero `No VAT`, `Cost Center`) must match names that already exist in the customer's org.
+
+Verified by `scripts/test-export-templates.ts` (21 checks): every format byte-deterministic; cents rounding keeps a sub-cent JE balanced; structure + Reckon-code emission; spend-splits excludes the liability line and %s sum to 100; validators block unbalanced / GL-missing / un-splittable entries.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

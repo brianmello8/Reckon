@@ -1,0 +1,1 @@
+ALTER TABLE "export_batches" ADD COLUMN "needs_mapping_count" integer DEFAULT 0 NOT NULL;
