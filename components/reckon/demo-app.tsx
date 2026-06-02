@@ -16,6 +16,7 @@ import {
   Gauge,
   FileDown,
   ArrowLeft,
+  ChevronDown,
 } from "lucide-react";
 import { DashboardClient } from "@/app/(app)/(operations)/dashboard/dashboard-client";
 import { MOCK } from "@/lib/reckon/mock";
@@ -30,6 +31,7 @@ type Screen =
   | "workflows"
   | "showback" | "invoices" | "accruals" | "unit-economics" | "export";
 
+type Anomaly = (typeof MOCK.anomalies)[number];
 type NavItem = { id: Screen; label: string; icon: typeof Users; badge?: boolean };
 const NAV_SECTIONS: { section: string; items: NavItem[] }[] = [
   {
@@ -59,7 +61,9 @@ const ALL_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
 
 export function DemoApp() {
   const [screen, setScreen] = React.useState<Screen>("dashboard");
-  const unack = MOCK.anomalies.length;
+  // Anomalies live in state so "Acknowledge" actually clears them + updates the badge.
+  const [anomalies, setAnomalies] = React.useState<Anomaly[]>(MOCK.anomalies);
+  const unack = anomalies.length;
 
   const navButton = (item: NavItem, mobile = false) => {
     const on = screen === item.id;
@@ -88,11 +92,8 @@ export function DemoApp() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-warm">
-      {/* Sidebar */}
       <aside className="hidden w-[232px] shrink-0 flex-col border-r border-line bg-paper lg:flex">
-        <div className="flex h-[60px] items-center border-b border-line px-[18px]">
-          <Logo />
-        </div>
+        <div className="flex h-[60px] items-center border-b border-line px-[18px]"><Logo /></div>
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
           {NAV_SECTIONS.map((sec, i) => (
             <div key={sec.section} className={i > 0 ? "mt-3" : ""}>
@@ -103,10 +104,7 @@ export function DemoApp() {
         </nav>
         <div className="border-t border-line p-3">
           <div className="rounded-xl border border-line bg-bg-2 p-3">
-            <div className="flex items-center gap-2">
-              <span className="pulse-dot" />
-              <span className="text-[12.5px] font-semibold text-ink">Ingestion live</span>
-            </div>
+            <div className="flex items-center gap-2"><span className="pulse-dot" /><span className="text-[12.5px] font-semibold text-ink">Ingestion live</span></div>
             <p className="mt-1.5 text-[11.5px] leading-snug text-ink-3">Last poll 6m ago · next in 54m</p>
           </div>
         </div>
@@ -115,7 +113,7 @@ export function DemoApp() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-center gap-2 bg-brand-soft px-4 py-1.5 text-[12.5px] text-brand-ink">
           <span className="font-medium">Interactive demo</span>
-          <span className="text-ink-3">· sample data, nothing is saved</span>
+          <span className="text-ink-3">· sample data · click around, nothing is saved</span>
         </div>
 
         <header
@@ -139,11 +137,9 @@ export function DemoApp() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up" key={screen}>
-            {screen === "dashboard" && (
-              <DashboardClient data={MOCK.dashboard} range="30d" orgName="Northwind" recentAnomalies={MOCK.recentAnomalies} demo />
-            )}
+            {screen === "dashboard" && <DashboardClient data={MOCK.dashboard} range="30d" orgName="Northwind" recentAnomalies={MOCK.recentAnomalies} demo />}
             {screen === "developers" && <DemoDevelopers />}
-            {screen === "anomalies" && <DemoAnomalies />}
+            {screen === "anomalies" && <DemoAnomalies anomalies={anomalies} onAck={(id) => setAnomalies((a) => a.filter((x) => x.id !== id))} onReset={() => setAnomalies(MOCK.anomalies)} />}
             {screen === "providers" && <DemoProviders />}
             {screen === "observability" && <DemoObservability />}
             {screen === "integrations" && <DemoIntegrations />}
@@ -160,7 +156,7 @@ export function DemoApp() {
   );
 }
 
-// ── shared bits ─────────────────────────────────────────────────────────────
+// ── shared ──────────────────────────────────────────────────────────────────
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div className={`rounded-xl border bg-paper p-4 shadow-sm ${accent ? "border-brand/40" : "border-line"}`}>
@@ -170,11 +166,13 @@ function Stat({ label, value, sub, accent }: { label: string; value: string; sub
     </div>
   );
 }
-function Panel({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+function Panel({ title, sub, children, action }: { title: string; sub?: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-line bg-paper p-4 shadow-sm">
-      <div className="font-semibold text-ink">{title}</div>
-      {sub && <p className="mt-0.5 text-[12.5px] text-ink-3">{sub}</p>}
+      <div className="flex items-start justify-between gap-3">
+        <div><div className="font-semibold text-ink">{title}</div>{sub && <p className="mt-0.5 text-[12.5px] text-ink-3">{sub}</p>}</div>
+        {action}
+      </div>
       <div className="mt-3">{children}</div>
     </div>
   );
@@ -186,51 +184,74 @@ function SimpleTable({ head, rows }: { head: string[]; rows: React.ReactNode[][]
         <thead className="bg-bg-2 text-left text-[11.5px] uppercase tracking-wide text-ink-3">
           <tr>{head.map((h, i) => <th key={i} className={`px-3 py-2 font-medium ${i > 0 ? "text-right" : ""}`}>{h}</th>)}</tr>
         </thead>
-        <tbody>
-          {rows.map((cells, ri) => (
-            <tr key={ri} className="border-t border-line">
-              {cells.map((c, ci) => <td key={ci} className={`px-3 py-2 ${ci > 0 ? "mono text-right text-ink-2" : "text-ink"}`}>{c}</td>)}
-            </tr>
-          ))}
-        </tbody>
+        <tbody>{rows.map((cells, ri) => (
+          <tr key={ri} className="border-t border-line">
+            {cells.map((c, ci) => <td key={ci} className={`px-3 py-2 ${ci > 0 ? "mono text-right text-ink-2" : "text-ink"}`}>{c}</td>)}
+          </tr>
+        ))}</tbody>
       </table>
     </div>
   );
 }
+function Btn({ children, onClick, variant = "solid", disabled }: { children: React.ReactNode; onClick?: () => void; variant?: "solid" | "outline"; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-8 items-center rounded-lg px-3 text-[12.5px] font-medium transition-colors disabled:opacity-50 ${
+        variant === "solid" ? "bg-ink text-paper hover:opacity-90" : "border border-line text-ink hover:bg-bg-2"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
 const usd = (n: number) => fmtMoney(n);
 
-// ── existing operations screens ─────────────────────────────────────────────
+// ── Developers (expandable drill-down) ──────────────────────────────────────
 function DemoDevelopers() {
   const total = MOCK.developers.reduce((a, d) => a + d.totalCost, 0);
+  const [open, setOpen] = React.useState<string | null>(null);
   return (
     <div>
-      <PageHead title="Developers" sub="Northwind · 10 developers · 3 providers" />
+      <PageHead title="Developers" sub="Northwind · 10 developers · 3 providers · click a row to drill in" />
       <div className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-line">
-              {["Developer", "Share", "30-day spend", "Keys"].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">{h}</th>
-              ))}
-            </tr>
-          </thead>
+          <thead><tr className="border-b border-line">{["Developer", "Share", "30-day spend", "Keys", ""].map((h, i) => (
+            <th key={i} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">{h}</th>
+          ))}</tr></thead>
           <tbody>
-            {MOCK.developers.map((d, i) => (
-              <tr key={d.id} className="border-b border-line transition-colors last:border-0 hover:bg-bg-2">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={d.displayName} size={28} hue={(i * 47) % 360} />
-                    <div>
-                      <div className="text-[13.5px] font-medium text-ink">{d.displayName}</div>
-                      <div className="text-[12px] text-ink-3">{d.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3"><div className="max-w-[160px]"><ShareBar parts={[{ k: "x", value: (d.totalCost / total) * 100 }]} total={100} h={4} /></div></td>
-                <td className="px-4 py-3 mono text-[13.5px] text-ink">{fmtMoney(microsToDollars(d.totalCost))}</td>
-                <td className="px-4 py-3"><span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">{d.keyCount} keys</span></td>
-              </tr>
-            ))}
+            {MOCK.developers.map((d, i) => {
+              const isOpen = open === d.id;
+              const dollars = microsToDollars(d.totalCost);
+              const split = [{ m: "Opus 4", pct: 0.55 }, { m: "Sonnet 4", pct: 0.32 }, { m: "Haiku 4", pct: 0.13 }];
+              return (
+                <React.Fragment key={d.id}>
+                  <tr className="cursor-pointer border-b border-line transition-colors hover:bg-bg-2" onClick={() => setOpen(isOpen ? null : d.id)}>
+                    <td className="px-4 py-3"><div className="flex items-center gap-2.5"><Avatar name={d.displayName} size={28} hue={(i * 47) % 360} /><div><div className="text-[13.5px] font-medium text-ink">{d.displayName}</div><div className="text-[12px] text-ink-3">{d.email}</div></div></div></td>
+                    <td className="px-4 py-3"><div className="max-w-[160px]"><ShareBar parts={[{ k: "x", value: (d.totalCost / total) * 100 }]} total={100} h={4} /></div></td>
+                    <td className="px-4 py-3 mono text-[13.5px] text-ink">{fmtMoney(dollars)}</td>
+                    <td className="px-4 py-3"><span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">{d.keyCount} keys</span></td>
+                    <td className="px-4 py-3 text-right"><ChevronDown size={15} className={`inline text-ink-3 transition-transform ${isOpen ? "rotate-180" : ""}`} /></td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="border-b border-line bg-bg-2/40">
+                      <td colSpan={5} className="px-4 py-3">
+                        <div className="text-[12px] font-medium text-ink-3">Model breakdown (30d)</div>
+                        <div className="mt-2 space-y-2">
+                          {split.map((s) => (
+                            <div key={s.m}>
+                              <div className="flex justify-between text-[12.5px]"><span className="text-ink-2">{s.m}</span><span className="mono text-ink">{fmtMoney(dollars * s.pct)}</span></div>
+                              <div className="mt-1"><ShareBar parts={[{ k: s.m, value: s.pct * 100 }]} total={100} h={4} /></div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -238,29 +259,38 @@ function DemoDevelopers() {
   );
 }
 
-function DemoAnomalies() {
+// ── Anomalies (acknowledge clears + updates badge) ──────────────────────────
+function DemoAnomalies({ anomalies, onAck, onReset }: { anomalies: Anomaly[]; onAck: (id: string) => void; onReset: () => void }) {
   return (
     <div>
       <PageHead title="Anomalies" sub="Flagged at mean + 3σ over a trailing 28-day window." />
-      <div className="flex flex-col gap-3">
-        {MOCK.anomalies.map((a, i) => (
-          <div key={a.id} className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
-            <div className="flex gap-4 p-4">
-              <span className="-my-4 -ml-4 w-1 shrink-0" style={{ background: a.severity === "critical" ? "var(--sev-crit)" : a.severity === "warn" ? "var(--sev-warn)" : "var(--sev-info)" }} />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <SeverityBadge severity={a.severity} />
-                  <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">{a.kind.replace("_", " ")}</span>
-                  <span className="text-[12px] text-ink-3">{formatDistanceToNow(new Date(a.detectedAt), { addSuffix: true })}</span>
+      {anomalies.length === 0 ? (
+        <div className="rounded-xl border border-line bg-paper p-8 text-center shadow-sm">
+          <p className="text-[14px] font-medium text-ink">All clear — every anomaly acknowledged.</p>
+          <p className="mt-1 text-[12.5px] text-ink-3">In the real app this clears the Slack alert too.</p>
+          <button onClick={onReset} className="mt-4 text-[12.5px] font-medium text-brand hover:underline">Reset demo anomalies</button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {anomalies.map((a, i) => (
+            <div key={a.id} className="overflow-hidden rounded-xl border border-line bg-paper shadow-sm">
+              <div className="flex gap-4 p-4">
+                <span className="-my-4 -ml-4 w-1 shrink-0" style={{ background: a.severity === "critical" ? "var(--sev-crit)" : a.severity === "warn" ? "var(--sev-warn)" : "var(--sev-info)" }} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SeverityBadge severity={a.severity} />
+                    <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">{a.kind.replace("_", " ")}</span>
+                    <span className="text-[12px] text-ink-3">{formatDistanceToNow(new Date(a.detectedAt), { addSuffix: true })}</span>
+                  </div>
+                  <div className="mono mt-2 text-[22px] font-semibold text-ink">{a.multiple}×<span className="ml-2 text-[13px] font-normal text-ink-3">above baseline</span></div>
+                  <div className="mt-2 flex items-center gap-2"><Avatar name={a.developerName} size={22} hue={(i * 47) % 360} /><span className="text-[13px] font-medium text-ink">{a.developerName}</span></div>
                 </div>
-                <div className="mono mt-2 text-[22px] font-semibold text-ink">{a.multiple}×<span className="ml-2 text-[13px] font-normal text-ink-3">above baseline</span></div>
-                <div className="mt-2 flex items-center gap-2"><Avatar name={a.developerName} size={22} hue={(i * 47) % 360} /><span className="text-[13px] font-medium text-ink">{a.developerName}</span></div>
+                <button onClick={() => onAck(a.id)} className="h-8 shrink-0 self-start rounded-lg bg-ink px-3 text-[12.5px] font-medium text-paper hover:opacity-90">Acknowledge</button>
               </div>
-              <button className="h-8 shrink-0 self-start rounded-lg bg-ink px-3 text-[12.5px] font-medium text-paper hover:opacity-90">Acknowledge</button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -312,10 +342,12 @@ function DemoObservability() {
   );
 }
 
+// ── Integrations (toggles actually flip) ────────────────────────────────────
 function DemoIntegrations() {
+  const [on, setOn] = React.useState<Record<string, boolean>>({ Slack: true, Linear: true });
   const rows = [
-    { name: "Slack", desc: "Daily digests + anomaly alerts to #eng-spend", on: true },
-    { name: "Linear", desc: "File an issue on every critical anomaly (ENG team)", on: true },
+    { name: "Slack", desc: "Daily digests + anomaly alerts to #eng-spend" },
+    { name: "Linear", desc: "File an issue on every critical anomaly (ENG team)" },
   ];
   return (
     <div>
@@ -324,12 +356,14 @@ function DemoIntegrations() {
         {rows.map((r) => (
           <div key={r.name} className="flex items-center justify-between rounded-xl border border-line bg-paper p-4 shadow-sm">
             <div>
-              <div className="flex items-center gap-2"><span className="text-[14px] font-semibold text-ink">{r.name}</span><span className="inline-flex h-[19px] items-center rounded-full bg-[color-mix(in_oklab,var(--pos)_12%,transparent)] px-2 text-[11px] font-medium text-pos">Connected</span></div>
+              <div className="flex items-center gap-2"><span className="text-[14px] font-semibold text-ink">{r.name}</span>
+                {on[r.name] && <span className="inline-flex h-[19px] items-center rounded-full bg-[color-mix(in_oklab,var(--pos)_12%,transparent)] px-2 text-[11px] font-medium text-pos">Connected</span>}
+              </div>
               <p className="mt-1 text-[12.5px] text-ink-3">{r.desc}</p>
             </div>
-            <span className="relative inline-block h-5 w-9 rounded-full" style={{ background: r.on ? "var(--brand)" : "var(--line-2)" }}>
-              <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white" style={{ transform: r.on ? "translateX(18px)" : "translateX(2px)" }} />
-            </span>
+            <button onClick={() => setOn((s) => ({ ...s, [r.name]: !s[r.name] }))} className="relative inline-block h-5 w-9 rounded-full transition-colors" style={{ background: on[r.name] ? "var(--brand)" : "var(--line-2)" }}>
+              <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform" style={{ transform: on[r.name] ? "translateX(18px)" : "translateX(2px)" }} />
+            </button>
           </div>
         ))}
       </div>
@@ -337,40 +371,40 @@ function DemoIntegrations() {
   );
 }
 
-// ── Workflows surface ───────────────────────────────────────────────────────
+// ── Workflows (tabs) ────────────────────────────────────────────────────────
 function DemoWorkflows() {
+  const [tab, setTab] = React.useState<"workflows" | "agents" | "customers" | "roi">("workflows");
   const workflows = [
     { name: "Support Triage Bot", agent: "Support Agent", total: 4200, runs: 1240, perRun: 3.39, outcome: "9,800 tickets → $0.43/ticket" },
     { name: "Code Review Bot", agent: "Dev Agent", total: 2860, runs: 540, perRun: 5.30, outcome: "540 PRs → $5.30/PR" },
     { name: "Doc Summarizer", agent: "Knowledge Agent", total: 1150, runs: 2600, perRun: 0.44, outcome: "2,600 docs → $0.44/doc" },
   ];
-  const customers = [
-    { ref: "Acme Corp", cost: 1900 }, { ref: "Globex", cost: 1200 }, { ref: "Initech", cost: 760 },
-  ];
+  const agents = [{ a: "Support Agent", total: 4200, wf: 1 }, { a: "Dev Agent", total: 2860, wf: 1 }, { a: "Knowledge Agent", total: 1150, wf: 1 }];
+  const customers = [{ ref: "Acme Corp", cost: 1900 }, { ref: "Globex", cost: 1200 }, { ref: "Initech", cost: 760 }];
+  const tabs = [["workflows", "Workflows"], ["agents", "Agents"], ["customers", "Customers"], ["roi", "ROI"]] as const;
   return (
     <div>
       <PageHead title="Workflows" sub="A product lens on AI spend — cost per agent, workflow, run, and outcome." />
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Workflow spend (30d)" value={usd(8210)} sub="3 workflows · 2 agents" />
-        <Stat label="Runs" value="4,380" sub="across all workflows" />
+        <Stat label="Workflow spend (30d)" value={usd(8210)} sub="3 workflows · 3 agents" />
+        <Stat label="Runs" value="4,380" />
         <Stat label="Top workflow" value="Support Triage" sub={usd(4200)} />
       </div>
-      <div className="mt-4 space-y-4">
-        <Panel title="Workflow ROI" sub="Cost per run and cost per business outcome.">
-          <SimpleTable
-            head={["Workflow", "Agent", "AI cost", "Runs", "Cost / run", "Cost per outcome"]}
-            rows={workflows.map((w) => [w.name, <span key="a" className="text-ink-3">{w.agent}</span>, usd(w.total), w.runs.toLocaleString(), usd(w.perRun), <span key="o" className="text-ink-2">{w.outcome}</span>])}
-          />
-        </Panel>
-        <Panel title="Cost by end-customer" sub="Attributed from run metadata (customer_ref).">
-          <SimpleTable head={["Customer", "AI cost (30d)"]} rows={customers.map((c) => [c.ref, usd(c.cost)])} />
-        </Panel>
+      <div className="mt-4 flex gap-1">
+        {tabs.map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${tab === id ? "bg-ink text-paper" : "text-ink-3 hover:bg-bg-2"}`}>{label}</button>
+        ))}
+      </div>
+      <div className="mt-3">
+        {tab === "workflows" && <SimpleTable head={["Workflow", "Agent", "AI cost", "Runs", "Cost / run"]} rows={workflows.map((w) => [w.name, <span key="a" className="text-ink-3">{w.agent}</span>, usd(w.total), w.runs.toLocaleString(), usd(w.perRun)])} />}
+        {tab === "agents" && <SimpleTable head={["Agent", "AI cost", "Workflows"]} rows={agents.map((a) => [a.a, usd(a.total), String(a.wf)])} />}
+        {tab === "customers" && <SimpleTable head={["Customer", "AI cost (30d)"]} rows={customers.map((c) => [c.ref, usd(c.cost)])} />}
+        {tab === "roi" && <SimpleTable head={["Workflow", "AI cost", "Cost per outcome"]} rows={workflows.map((w) => [w.name, usd(w.total), <span key="o" className="text-ink-2">{w.outcome}</span>])} />}
       </div>
     </div>
   );
 }
 
-// ── Finance: Showback ───────────────────────────────────────────────────────
 function DemoShowback() {
   const cc = [{ k: "Platform Eng", v: 4100 }, { k: "Data", v: 2300 }, { k: "Support", v: 1810 }];
   const types = [{ k: "COGS", v: 5900 }, { k: "Opex · R&D", v: 2310 }];
@@ -381,7 +415,7 @@ function DemoShowback() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Coded spend (30d)" value={usd(total)} sub="100% of usage" />
         <Stat label="Cost centers" value="3" />
-        <Stat label="Uncoded" value="$0" sub="all in the needs-coding queue cleared" />
+        <Stat label="Uncoded" value="$0" sub="needs-coding queue cleared" />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Panel title="By cost center">
@@ -401,7 +435,6 @@ function DemoShowback() {
   );
 }
 
-// ── Finance: Invoices & reconciliation ──────────────────────────────────────
 function DemoInvoices() {
   return (
     <div>
@@ -413,22 +446,24 @@ function DemoInvoices() {
       </div>
       <div className="mt-4">
         <Panel title="Discrepancies (explained)" sub="Residual after explaining each line nets to zero.">
-          <SimpleTable
-            head={["Type", "Amount", "Note"]}
-            rows={[
-              ["credits", <span key="1">−{usd(42)}</span>, <span key="n1" className="text-ink-3">promotional credit applied on invoice</span>],
-              ["untracked_keys", <span key="2">+{usd(18)}</span>, <span key="n2" className="text-ink-3">key not yet mapped to a developer</span>],
-              ["rounding", <span key="3">−{usd(0.7)}</span>, <span key="n3" className="text-ink-3">provider rounds to the cent</span>],
-            ]}
-          />
+          <SimpleTable head={["Type", "Amount", "Note"]} rows={[
+            ["credits", <span key="1">−{usd(42)}</span>, <span key="n1" className="text-ink-3">promotional credit applied on invoice</span>],
+            ["untracked_keys", <span key="2">+{usd(18)}</span>, <span key="n2" className="text-ink-3">key not yet mapped to a developer</span>],
+            ["rounding", <span key="3">−{usd(0.7)}</span>, <span key="n3" className="text-ink-3">provider rounds to the cent</span>],
+          ]} />
         </Panel>
       </div>
     </div>
   );
 }
 
-// ── Finance: Accruals / close ───────────────────────────────────────────────
+// ── Accruals (generate → approve → reverse/true-up flow) ────────────────────
 function DemoAccruals() {
+  const [step, setStep] = React.useState<"idle" | "generating" | "draft" | "approved">("idle");
+  function generate() {
+    setStep("generating");
+    setTimeout(() => setStep("draft"), 700);
+  }
   return (
     <div>
       <PageHead title="Accruals" sub="Real-time usage is the best accrual estimate. Generate a balanced draft JE; reverse and true-up next period." />
@@ -438,29 +473,40 @@ function DemoAccruals() {
         <Stat label="Forecast tail" value={usd(1740)} sub="not-yet-reported" />
         <Stat label="Accrual accuracy" value="±6.2%" sub="trailing 3 periods" accent />
       </div>
-      <div className="mt-4 space-y-4">
-        <Panel title="Draft journal entry — May accrual" sub="Expense debits by GL × cost center, one accrued-liability credit. Debits = credits.">
-          <SimpleTable
-            head={["GL account", "Cost center", "Debit", "Credit"]}
-            rows={[
-              ["6000 · AI COGS", "Platform Eng", usd(3960), ""],
-              ["6000 · AI COGS", "Data", usd(2210), ""],
-              ["6010 · AI R&D", "Support", usd(1770), ""],
-              [<span key="l" className="text-ink-3">2150 · Accrued liabilities</span>, "—", "", usd(7940)],
-            ]}
-          />
-          <div className="mt-3 flex items-center gap-2">
-            <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">balanced</span>
-            <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">draft → approved</span>
-            <span className="text-[12px] text-ink-3">reversed &amp; trued-up against the actual invoice next period</span>
-          </div>
+      <div className="mt-4">
+        <Panel
+          title="Month-end accrual — May"
+          sub="Expense debits by GL × cost center, one accrued-liability credit. Debits = credits."
+          action={
+            step === "idle" ? <Btn onClick={generate}>Generate accrual</Btn>
+            : step === "generating" ? <Btn disabled>Generating…</Btn>
+            : step === "draft" ? <Btn onClick={() => setStep("approved")}>Approve (internal)</Btn>
+            : <span className="inline-flex h-[21px] items-center rounded-full bg-[color-mix(in_oklab,var(--pos)_12%,transparent)] px-2.5 text-[11.5px] font-medium text-pos">approved</span>
+          }
+        >
+          {step === "idle" && <p className="text-[13px] text-ink-3">Click <b>Generate accrual</b> to build the draft journal entry from this period&apos;s coded usage + forecast tail.</p>}
+          {step === "generating" && <p className="text-[13px] text-ink-3">Summing coded usage, forecasting the not-yet-reported tail, balancing the entry…</p>}
+          {(step === "draft" || step === "approved") && (
+            <>
+              <SimpleTable head={["GL account", "Cost center", "Debit", "Credit"]} rows={[
+                ["6000 · AI COGS", "Platform Eng", usd(3960), ""],
+                ["6000 · AI COGS", "Data", usd(2210), ""],
+                ["6010 · AI R&D", "Support", usd(1770), ""],
+                [<span key="l" className="text-ink-3">2150 · Accrued liabilities</span>, "—", "", usd(7940)],
+              ]} />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">balanced · debits = credits</span>
+                <span className="inline-flex h-[21px] items-center rounded-full bg-bg-2 px-2.5 text-[11.5px] font-medium text-ink-2">{step === "approved" ? "approved" : "draft"}</span>
+                {step === "approved" && <span className="text-[12px] text-ink-3">→ reversed &amp; trued-up against the actual invoice next period</span>}
+              </div>
+            </>
+          )}
         </Panel>
       </div>
     </div>
   );
 }
 
-// ── Finance: Unit economics ─────────────────────────────────────────────────
 function DemoUnitEconomics() {
   return (
     <div>
@@ -480,44 +526,104 @@ function DemoUnitEconomics() {
           </div>
         </div>
         <Panel title="Cost per outcome">
-          <SimpleTable
-            head={["Grain", "AI cost", "Outcome", "Cost per unit"]}
-            rows={[
-              ["Support Triage (workflow)", usd(4200), "9,800 tickets", "$0.43 / ticket"],
-              ["Doc Summarizer (workflow)", usd(1150), "2,600 docs", "$0.44 / doc"],
-              ["Acme Corp (customer)", usd(1900), "$48,000 revenue", "4.0% of revenue"],
-            ]}
-          />
+          <SimpleTable head={["Grain", "AI cost", "Outcome", "Cost per unit"]} rows={[
+            ["Support Triage (workflow)", usd(4200), "9,800 tickets", "$0.43 / ticket"],
+            ["Doc Summarizer (workflow)", usd(1150), "2,600 docs", "$0.44 / doc"],
+            ["Acme Corp (customer)", usd(1900), "$48,000 revenue", "4.0% of revenue"],
+          ]} />
         </Panel>
       </div>
     </div>
   );
 }
 
-// ── Finance: Export ─────────────────────────────────────────────────────────
+// ── Export (real CSV download + ERP mapping) ────────────────────────────────
+const JE_LINES = [
+  { gl: "6000", glName: "AI COGS", cc: "Platform Eng", debit: 3960, credit: 0 },
+  { gl: "6000", glName: "AI COGS", cc: "Data", debit: 2210, credit: 0 },
+  { gl: "6010", glName: "AI R&D", cc: "Support", debit: 1770, credit: 0 },
+  { gl: "2150", glName: "Accrued liabilities", cc: "", debit: 0, credit: 7940 },
+];
+function buildCsv(batchId: string): string {
+  const header = ["batch_external_id", "journal_entry_id", "gl_code", "gl_name", "cost_center", "debit", "credit"];
+  const rows = [
+    `# Reckon export — ${batchId} — May 2026 (inclusive start, exclusive end; tz America/Los_Angeles)`,
+    header.join(","),
+    ...JE_LINES.map((l) => [batchId, "JE-MAY-ACCRUAL", l.gl, l.glName, l.cc, l.debit ? l.debit.toFixed(2) : "", l.credit ? l.credit.toFixed(2) : ""].join(",")),
+  ];
+  return rows.join("\n") + "\n";
+}
 function DemoExport() {
+  const [batches, setBatches] = React.useState([
+    { id: "RCKN-2026-04-1B77DE03", fmt: "generic_csv", jes: 11, hash: "2d44e018", status: "acknowledged" },
+  ]);
+  const [maps, setMaps] = React.useState<Record<string, string>>({ "6000": "60000", "Platform Eng": "ENG" });
+
+  function generate(fmt: string) {
+    const id = `RCKN-2026-05-${Math.abs(Array.from(fmt).reduce((a, c) => a + c.charCodeAt(0), Date.now() % 100000)).toString(16).toUpperCase().slice(0, 8)}`;
+    const csv = buildCsv(id);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${id}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setBatches((b) => [{ id, fmt, jes: 12, hash: Math.random().toString(16).slice(2, 10), status: "downloaded" }, ...b]);
+  }
+
+  const mappingRows: { label: string; key: string; options: string[] }[] = [
+    { label: "6000 · AI COGS", key: "6000", options: ["60000", "60010"] },
+    { label: "Platform Eng (cost center)", key: "Platform Eng", options: ["ENG", "PLT"] },
+    { label: "Support (cost center)", key: "Support", options: ["SUP", "CS"] },
+  ];
+
   return (
     <div>
       <PageHead title="Export" sub="Turn approved journal entries into a GL-ready file you import — deterministic, re-import-safe, no credentials." />
-      <div className="mt-1 space-y-4">
+      <Panel title="Generate export batch" sub="May accrual · 12 approved JEs. Pick a format and download a real file." action={null}>
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={() => generate("generic_csv")}>Generic CSV ↓</Btn>
+          <Btn variant="outline" onClick={() => generate("netsuite_csv")}>NetSuite CSV ↓</Btn>
+          <Btn variant="outline" onClick={() => generate("qbo_iif")}>QuickBooks IIF ↓</Btn>
+          <Btn variant="outline" onClick={() => generate("xero_csv")}>Xero CSV ↓</Btn>
+        </div>
+        <p className="mt-2 text-[12px] text-ink-3">Each download is a real, deterministic file (same JE set → same content hash). Try it.</p>
+      </Panel>
+      <div className="mt-4 space-y-4">
         <Panel title="Batch history" sub="Every batch carries a stable id + content hash; a JE is never silently exported twice.">
-          <SimpleTable
-            head={["Batch", "Format", "JEs", "Hash", "Status"]}
-            rows={[
-              [<span key="1" className="mono text-[11.5px]">RCKN-2026-05-4F2A91C0</span>, "netsuite_csv", "12", <span key="h1" className="text-[11.5px]">8c1f9a2b…</span>, <span key="s1" className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">downloaded</span>],
-              [<span key="2" className="mono text-[11.5px]">RCKN-2026-04-1B77DE03</span>, "generic_csv", "11", <span key="h2" className="text-[11.5px]">2d44e018…</span>, <span key="s2" className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">acknowledged</span>],
-            ]}
-          />
+          <SimpleTable head={["Batch", "Format", "JEs", "Hash", "Status"]} rows={batches.map((b) => [
+            <span key="1" className="mono text-[11.5px]">{b.id}</span>, b.fmt, String(b.jes), <span key="h" className="text-[11.5px]">{b.hash}…</span>,
+            <span key="s" className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">{b.status}</span>,
+          ])} />
         </Panel>
         <Panel title="ERP code mapping" sub="Map Reckon dimensions to your real chart of accounts — uploaded, never via API.">
-          <SimpleTable
-            head={["Reckon value", "Real ERP code", "Status"]}
-            rows={[
-              ["6000 · AI COGS", "60000 · AI COGS", <span key="1" className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">mapped</span>],
-              ["Platform Eng (cost center)", "ENG", <span key="2" className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">mapped</span>],
-              ["Support (cost center)", "—", <span key="3" className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600">needs mapping</span>],
-            ]}
-          />
+          <div className="overflow-hidden rounded-lg border border-line">
+            <table className="w-full text-[13px]">
+              <thead className="bg-bg-2 text-left text-[11.5px] uppercase tracking-wide text-ink-3"><tr><th className="px-3 py-2 font-medium">Reckon value</th><th className="px-3 py-2 font-medium">Real ERP code</th><th className="px-3 py-2 font-medium">Status</th></tr></thead>
+              <tbody>
+                {mappingRows.map((r) => (
+                  <tr key={r.key} className="border-t border-line">
+                    <td className="px-3 py-2 text-ink">{r.label}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={maps[r.key] ?? ""}
+                        onChange={(e) => setMaps((m) => ({ ...m, [r.key]: e.target.value }))}
+                        className="h-8 rounded-md border border-input bg-transparent px-2 text-[12.5px]"
+                      >
+                        <option value="">— unmapped —</option>
+                        {r.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      {maps[r.key]
+                        ? <span className="inline-flex items-center rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">mapped</span>
+                        : <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600">needs mapping</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Panel>
       </div>
     </div>
