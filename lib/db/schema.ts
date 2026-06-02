@@ -206,6 +206,22 @@ export const outcomeDirectionEnum = pgEnum("outcome_direction", [
 export const outcomeSourceEnum = pgEnum("outcome_source", ["manual", "csv", "api"]);
 export const ingestTokenStatusEnum = pgEnum("ingest_token_status", ["active", "revoked"]);
 
+// Journal-entry export (Phase 13.1, §9). File-first delivery — no credentials.
+export const exportTargetFormatEnum = pgEnum("export_target_format", [
+  "generic_csv",
+  "qbo_iif",
+  "netsuite_csv",
+  "intacct_csv",
+  "xero_csv",
+  "spend_splits_csv",
+]);
+export const exportBatchStatusEnum = pgEnum("export_batch_status", [
+  "generated",
+  "downloaded",
+  "acknowledged",
+  "superseded",
+]);
+
 // --- Tables ---
 
 export const organizations = pgTable("organizations", {
@@ -1362,6 +1378,70 @@ export const ingestTokens = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("uniq_ingest_tokens_hash").on(t.tokenHash)]
+);
+
+// A generated export file: approved JEs for a period rendered to a target format
+// the customer imports themselves (Phase 13.1, §9). No credential, no external
+// connection. `external_batch_id` is deterministic (org + period + exact JE set)
+// — the re-import idempotency anchor; `content_hash` proves byte-determinism. We
+// store the rendered `body` so a download serves exactly the hashed bytes. We
+// never claim a JE is "posted" — only the batch lifecycle generated→downloaded→
+// acknowledged (the customer's own confirmation) or superseded.
+export const exportBatches = pgTable(
+  "export_batches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => accountingPeriods.id),
+    targetFormat: exportTargetFormatEnum("target_format").notNull(),
+    externalBatchId: text("external_batch_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    filename: text("filename").notNull(),
+    mimetype: text("mimetype").notNull(),
+    body: text("body").notNull(),
+    status: exportBatchStatusEnum("status").notNull().default("generated"),
+    // Set (with a reason) when generated against a LOCKED Reckon period.
+    lockOverrideReason: text("lock_override_reason"),
+    // Set on a batch when it is superseded (records why + the replacement).
+    supersedeReason: text("supersede_reason"),
+    supersededByBatchId: uuid("superseded_by_batch_id").references(
+      (): AnyPgColumn => exportBatches.id
+    ),
+    generatedByUserId: uuid("generated_by_user_id").references(() => users.id),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    downloadedAt: timestamp("downloaded_at", { withTimezone: true }),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("idx_export_batches_org_period").on(t.orgId, t.periodId),
+    index("idx_export_batches_external").on(t.orgId, t.externalBatchId),
+  ]
+);
+
+// Exactly which JEs went into which batch — so a JE is never silently exported
+// twice (the double-export guard reads this).
+export const exportBatchEntries = pgTable(
+  "export_batch_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => exportBatches.id),
+    journalEntryId: uuid("journal_entry_id")
+      .notNull()
+      .references(() => journalEntries.id),
+  },
+  (t) => [
+    uniqueIndex("uniq_export_batch_entries").on(t.batchId, t.journalEntryId),
+    index("idx_export_batch_entries_je").on(t.orgId, t.journalEntryId),
+  ]
 );
 
 // --- Relations ---

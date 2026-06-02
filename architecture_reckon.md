@@ -475,7 +475,7 @@ The per-day run-rate is the MTD daily mean, **optionally split weekday vs weeken
 
 The month-end accrual is Reckon's headline close feature: real-time usage is the best estimate of the not-yet-arrived invoice. `lib/close/accrual.ts` (pure `buildAccrualLines` + DB `generateAccrual`).
 
-**Tables (draft-first).** `journal_entries(period_id, type accrual|allocation|true_up|reversal, status draft|approved, idempotency_key, memo, approved_by/at)` — there is **no `posted` status on the JE**; delivery state lives downstream in `export_batches.status` / `posting_log.status` (§9, Phase 13 export-first), since one flag can't represent "exported a file we can't confirm was imported" vs "posted via API", `journal_entry_lines(gl_account, cost_center, entity?, project?, debit, credit)`, `accruals(period_id, provider?, estimated_amount, tail_forecast_amount, method_note, status, journal_entry_id)`. All org-scoped, RLS.
+**Tables (draft-first).** `journal_entries(period_id, type accrual|allocation|true_up|reversal, status draft|approved, idempotency_key, memo, approved_by/at)` — there is **no `posted` status on the JE**; delivery state lives downstream in `export_batches.status` / `posting_log.status` (§5i, Phase 13 export-first), since one flag can't represent "exported a file we can't confirm was imported" vs "posted via API", `journal_entry_lines(gl_account, cost_center, entity?, project?, debit, credit)`, `accruals(period_id, provider?, estimated_amount, tail_forecast_amount, method_note, status, journal_entry_id)`. All org-scoped, RLS.
 
 **Computation.** For the (tz-correct, §5d) period: sum coded usage via `cost_allocations` split by **GL × cost center** (respecting `allocation_pct`), then add the **not-yet-reported forecast tail** (per provider: `projected − MTD`, §5c). The tail is split across the observed GL/CC lines **pro-rata** (largest-remainder, so debits sum exactly), carrying the same coding. The JE is **expense debits by CC/GL + one accrued-liability credit** (`organizations.accrued_liability_gl_account_id`). `estimated = observed + tail`. A `method_note` records exactly how the number was computed (audit evidence).
 
@@ -540,6 +540,24 @@ Pairs AI cost (the denominator Reckon has at workflow/customer/product-line grai
 **Margin alerts** (`evaluateMargin`, pure → `detectMarginAlerts`). For any customer/workflow/product line with a revenue outcome: `negative_margin` (critical) when AI cost > revenue — margin at risk = the overage; `erosion` (warn) when AI cost ≥ a threshold share of revenue (default 80%). No revenue → no verdict. The weekly Inngest sweep (`cron-margin-alerts` → `margin-alerts-for-org`, 06:00 UTC Mon) posts to Slack and files a Linear issue on critical (Pro only), reusing Phase 5 plumbing; the weekly cadence is the throttle (no per-item dedup state persisted).
 
 Verified by `scripts/test-unit-economics.ts` (23 checks): cost-per-unit at all three grains, COGS % using only COGS-coded spend (not total), the customer cost-exceeds-revenue alert with correct margin-at-risk, missing-outcome honesty (empty metrics, null ratios), and exact reconciliation to underlying usage.
+
+---
+
+## 5i. Journal-entry export (Phase 13.1, playbook §9) — export-first delivery
+
+Phase 13 feeds the customer's finance system **file-first**: an approved journal entry (§5e–§5f) is rendered to a downloadable, GL-ready file the customer imports themselves. **No credential, no external connection** anywhere in 13.1–13.3 — this is the primary delivery path and the whole credential-free value (see [[project_phase13_export_first]]); a live API push is the optional, demand-pulled 13.4. `lib/export/` (pure formatters + `build.ts`), UI `(finance)/finance/export`.
+
+**Architectural rule (extended).** Draft-first / idempotent / period-lock-aware now explicitly covers the file: *a file the customer may re-import must carry stable line ids and a double-export guard — the same contract as an API post.*
+
+**Tables (org-scoped, RLS).** `export_batches(period_id, target_format, external_batch_id, content_hash, filename, mimetype, body, status, lock_override_reason, supersede_reason, superseded_by_batch_id, generated_by/at, downloaded_at, acknowledged_at)` + `export_batch_entries(batch_id, journal_entry_id)` recording exactly which JEs went into which batch. We store the rendered `body` so a download serves the exact hashed bytes. We **never mark a JE "posted"** — only the batch lifecycle `generated → downloaded → acknowledged` (the customer's own confirmation) or `superseded`.
+
+**Determinism & idempotency.** A formatter is a pure function (canonical JE → file); identical inputs → identical bytes, proven by `content_hash`. `external_batch_id = RCKN-{period}-{sha256(org:period:sorted JE ids)}` is the stable re-import anchor: the same JE set always yields the same id and hash, no matter when regenerated. Volatile data (generation timestamp) is kept on the row, **never in the hashed body**. Every line carries a stable `line_external_id` (org+JE+line) so a double-import is detectable on both sides. The header stamps the period + cutoff basis (timezone, inclusive-start/exclusive-end from §5d).
+
+**Guards.** Before generating, the **double-export guard** checks `export_batch_entries`: any selected JE already in a non-superseded batch blocks the export and returns the conflicting batches; the user must explicitly **supersede** (status→superseded, reason recorded, replacement linked) or exclude it. Regenerating the same set after supersede reproduces the identical `external_batch_id` + `content_hash`. **Period locks:** closed periods export freely; a **LOCKED** Reckon period requires an explicit, recorded `lock_override_reason`. (Stop-and-ask: superseding a batch that was already *downloaded* warns that a supersede + re-import can double-book on the customer's side.)
+
+**Formats.** `generic_csv` ships in 13.1 (the reference); `qbo_iif`, `netsuite_csv`, `intacct_csv`, `xero_csv`, `spend_splits_csv` are registered but throw until 13.2 — a half-built format can't silently emit a bad file. Per-target column contracts go in §5j (13.2).
+
+Verified by `scripts/test-export-engine.ts` (17 checks): generate + downloadable body + period stamping; formatter byte-determinism; guard fires on re-export and the supersede path reproduces an identical hash + logs the reason; locked-period override required and recorded; lifecycle generated→downloaded→acknowledged; view reports counts + history. A grep confirms zero credential/connection surface in the feature.
 
 ---
 
