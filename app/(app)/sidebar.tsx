@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Wallet,
   CalendarClock,
+  BookText,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -54,6 +55,7 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
     { href: "/finance/forecast", label: "Forecast", icon: TrendingUp },
     { href: "/finance/commitments", label: "Commitments", icon: Wallet },
     { href: "/finance/periods", label: "Periods", icon: CalendarClock },
+    { href: "/finance/accruals", label: "Accruals", icon: BookText },
   ],
 };
 

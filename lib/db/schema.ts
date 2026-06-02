@@ -139,6 +139,22 @@ export const accountingPeriodStatusEnum = pgEnum("accounting_period_status", [
   "closed",
   "locked",
 ]);
+// Accruals & journal entries (Phase 11.2)
+export const accrualStatusEnum = pgEnum("accrual_status", [
+  "draft",
+  "reversed",
+  "trued_up",
+]);
+export const journalEntryTypeEnum = pgEnum("journal_entry_type", [
+  "accrual",
+  "allocation",
+  "true_up",
+]);
+export const journalEntryStatusEnum = pgEnum("journal_entry_status", [
+  "draft",
+  "approved",
+  "posted",
+]);
 // Commitments & prepaid credits (Phase 10.4)
 export const commitmentTypeEnum = pgEnum("commitment_type", [
   "committed_use",
@@ -196,6 +212,9 @@ export const organizations = pgTable("organizations", {
   // digest_timezone (a notification preference). Resolution: entity TZ → this →
   // digest_timezone. Nullable; falls back to digest_timezone when unset.
   reportingTimezone: text("reporting_timezone"),
+  // GL account the accrual's balancing credit posts to (Phase 11.2). Nullable
+  // until configured; the JE still balances (debits == credits) regardless.
+  accruedLiabilityGlAccountId: uuid("accrued_liability_gl_account_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -889,6 +908,74 @@ export const accountingPeriods = pgTable(
   (t) => [
     index("idx_accounting_periods_org").on(t.orgId, t.periodStart),
   ]
+);
+
+// Journal entries + lines (Phase 11.2, architecture §5e). DRAFT-first: nothing
+// posts externally here (Phase 13). Debits must equal credits per entry.
+export const journalEntries = pgTable(
+  "journal_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => accountingPeriods.id),
+    type: journalEntryTypeEnum("type").notNull(),
+    status: journalEntryStatusEnum("status").notNull().default("draft"),
+    // Unique per org — prevents a duplicate JE for the same logical entry.
+    idempotencyKey: text("idempotency_key").notNull(),
+    memo: text("memo"),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("uniq_journal_entries_idempotency").on(t.orgId, t.idempotencyKey)]
+);
+
+export const journalEntryLines = pgTable(
+  "journal_entry_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    journalEntryId: uuid("journal_entry_id")
+      .notNull()
+      .references(() => journalEntries.id),
+    glAccountId: uuid("gl_account_id").references(() => glAccounts.id),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+    entityId: uuid("entity_id").references(() => entities.id),
+    projectId: uuid("project_id").references(() => projects.id),
+    debit: bigint("debit", { mode: "bigint" }).notNull().default(sql`0`),
+    credit: bigint("credit", { mode: "bigint" }).notNull().default(sql`0`),
+    currency: text("currency").notNull().default("USD"),
+  },
+  (t) => [index("idx_journal_entry_lines_entry").on(t.orgId, t.journalEntryId)]
+);
+
+export const accruals = pgTable(
+  "accruals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => accountingPeriods.id),
+    provider: text("provider"), // null = total across providers
+    estimatedAmount: bigint("estimated_amount", { mode: "bigint" }).notNull(),
+    tailForecastAmount: bigint("tail_forecast_amount", { mode: "bigint" }).notNull(),
+    methodNote: text("method_note").notNull(),
+    status: accrualStatusEnum("status").notNull().default("draft"),
+    journalEntryId: uuid("journal_entry_id").references(() => journalEntries.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_accruals_period").on(t.orgId, t.periodId)]
 );
 
 // Provider commitments / prepaid credits (Phase 10.4, architecture §4b).
