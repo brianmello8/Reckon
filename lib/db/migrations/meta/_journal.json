@@ -218,6 +218,13 @@
       "when": 1780429343264,
       "tag": "0030_nasty_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780433272860,
+      "tag": "0031_hard_vermin",
+      "breakpoints": true
     }
   ]
 }

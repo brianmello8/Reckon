@@ -240,6 +240,13 @@ export const organizations = pgTable("organizations", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   plan: planEnum("plan").notNull().default("free"),
+  // Purchased Pro seats (the Stripe per-seat line quantity). Set by the billing
+  // webhook; null on free. Billing capacity only — tracked-developer count may
+  // exceed it (we never drop spend data), which the billing page flags.
+  seatCount: integer("seat_count"),
+  // Pro Finance add-on: unlocks the (finance) surface. Set true when the flat
+  // finance price is on the active subscription (billing webhook).
+  financeEnabled: boolean("finance_enabled").notNull().default(false),
   paymentStatus: text("payment_status"),
   digestTimeLocal: text("digest_time_local").notNull().default("09:00"),
   digestTimezone: text("digest_timezone")

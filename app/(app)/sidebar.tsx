@@ -72,17 +72,22 @@ export function Sidebar({
   unackCount = 0,
   surfaces = ["operations"],
   isAdmin = false,
+  financeEnabled = false,
 }: {
   className?: string;
   unackCount?: number;
   surfaces?: Surface[];
   isAdmin?: boolean;
+  financeEnabled?: boolean;
 }) {
   const pathname = usePathname();
 
-  // Only show surfaces the member can access, in a stable order.
+  // Only show surfaces the member can access, in a stable order. Finance shows
+  // only when the Pro Finance add-on is on (admins always see it → upgrade funnel).
   const order: Surface[] = ["operations", "workflows", "finance"];
-  const visible = order.filter((s) => surfaces.includes(s));
+  const visible = order.filter(
+    (s) => surfaces.includes(s) && (s !== "finance" || financeEnabled || isAdmin)
+  );
 
   const accountItems: NavItem[] = [
     { href: "/settings", label: "Settings", icon: Settings },

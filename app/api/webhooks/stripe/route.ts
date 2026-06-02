@@ -3,7 +3,23 @@ import { stripe } from "@/lib/stripe/client";
 import { db } from "@/lib/db/client";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { proPriceIds, financePriceIds } from "@/lib/stripe/config";
 import type Stripe from "stripe";
+
+/** Derive seatCount + financeEnabled from a subscription's line items. */
+function readEntitlements(sub: Stripe.Subscription): { seatCount: number | null; financeEnabled: boolean } {
+  const seatIds = proPriceIds();
+  const finIds = financePriceIds();
+  let seatCount: number | null = null;
+  let financeEnabled = false;
+  for (const item of sub.items.data) {
+    const priceId = item.price?.id;
+    if (!priceId) continue;
+    if (seatIds.includes(priceId)) seatCount = item.quantity ?? null;
+    if (finIds.includes(priceId)) financeEnabled = true;
+  }
+  return { seatCount, financeEnabled };
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -35,6 +51,16 @@ export async function POST(req: NextRequest) {
           ? session.subscription
           : session.subscription?.id;
 
+      // Pull entitlements (seats + finance add-on) from the new subscription.
+      let ent: { seatCount: number | null; financeEnabled: boolean } = { seatCount: null, financeEnabled: false };
+      if (subscriptionId) {
+        try {
+          ent = readEntitlements(await stripe.subscriptions.retrieve(subscriptionId));
+        } catch {
+          // fall through with defaults; the subscription.* event will reconcile
+        }
+      }
+
       await db
         .update(organizations)
         .set({
@@ -44,6 +70,8 @@ export async function POST(req: NextRequest) {
               ? session.customer
               : session.customer?.id ?? null,
           stripeSubscriptionId: subscriptionId ?? null,
+          seatCount: ent.seatCount,
+          financeEnabled: ent.financeEnabled,
           paymentStatus: null,
           updatedAt: new Date(),
         })
@@ -51,6 +79,7 @@ export async function POST(req: NextRequest) {
       break;
     }
 
+    case "customer.subscription.created":
     case "customer.subscription.updated": {
       const subscription = event.data.object as Stripe.Subscription;
       const customerId =
@@ -66,11 +95,16 @@ export async function POST(req: NextRequest) {
 
       if (!org) break;
 
+      const active = subscription.status === "active" || subscription.status === "trialing";
+      const ent = readEntitlements(subscription);
       await db
         .update(organizations)
         .set({
           stripeSubscriptionId: subscription.id,
-          plan: subscription.status === "active" ? "pro" : "free",
+          plan: active ? "pro" : "free",
+          // Entitlements only apply while active; clear them otherwise.
+          seatCount: active ? ent.seatCount : null,
+          financeEnabled: active ? ent.financeEnabled : false,
           updatedAt: new Date(),
         })
         .where(eq(organizations.id, org.id));
@@ -97,6 +131,8 @@ export async function POST(req: NextRequest) {
         .set({
           plan: "free",
           stripeSubscriptionId: null,
+          seatCount: null,
+          financeEnabled: false,
           paymentStatus: null,
           updatedAt: new Date(),
         })

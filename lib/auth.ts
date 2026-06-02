@@ -17,6 +17,8 @@ export type AuthUser = {
   surfaces: Surface[];
   orgName: string;
   orgSlug: string;
+  plan: "free" | "pro";
+  financeEnabled: boolean;
 };
 
 /**
@@ -42,6 +44,8 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
       orgId: organizations.id,
       orgName: organizations.name,
       orgSlug: organizations.slug,
+      plan: organizations.plan,
+      financeEnabled: organizations.financeEnabled,
     })
     .from(users)
     .innerJoin(organizations, eq(users.orgId, organizations.id))
@@ -66,12 +70,23 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     surfaces: (row.surfaces ?? ["operations"]) as Surface[],
     orgName: row.orgName,
     orgSlug: row.orgSlug,
+    plan: row.plan,
+    financeEnabled: row.financeEnabled,
   };
 });
 
 /** Whether the user can access a given surface (admins always can). */
 export function hasSurface(user: AuthUser, surface: Surface): boolean {
   return user.role === "admin" || user.surfaces.includes(surface);
+}
+
+/**
+ * Finance access requires BOTH the finance surface (per-user) AND the org's
+ * Pro Finance add-on (per-org billing). A finance-surface user on a non-finance
+ * plan sees the upsell, not the data.
+ */
+export function hasFinanceAccess(user: AuthUser): boolean {
+  return hasSurface(user, "finance") && user.financeEnabled;
 }
 
 /**

@@ -15,10 +15,12 @@ export function MobileNav({
   unackCount = 0,
   surfaces = ["operations"],
   isAdmin = false,
+  financeEnabled = false,
 }: {
   unackCount?: number;
   surfaces?: Surface[];
   isAdmin?: boolean;
+  financeEnabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -35,6 +37,7 @@ export function MobileNav({
           unackCount={unackCount}
           surfaces={surfaces}
           isAdmin={isAdmin}
+          financeEnabled={financeEnabled}
         />
       </SheetContent>
     </Sheet>

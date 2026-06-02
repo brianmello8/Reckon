@@ -43,6 +43,7 @@ export default async function AppLayout({
   const surfaces = isAdmin
     ? (["operations", "workflows", "finance"] as const).slice()
     : user.surfaces;
+  const financeEnabled = user.financeEnabled;
 
   // Unacknowledged anomaly count for the nav badge.
   const [{ value: unackCount } = { value: 0 }] = await withOrgContext(
@@ -66,6 +67,7 @@ export default async function AppLayout({
         unackCount={Number(unackCount)}
         surfaces={surfaces}
         isAdmin={isAdmin}
+        financeEnabled={financeEnabled}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -75,6 +77,7 @@ export default async function AppLayout({
           unackCount={Number(unackCount)}
           surfaces={surfaces}
           isAdmin={isAdmin}
+          financeEnabled={financeEnabled}
         />
         <main className="flex-1 overflow-y-auto bg-bg-warm">
           <div className="mx-auto w-full max-w-[1180px] px-4 py-7 lg:px-[26px] fade-up">

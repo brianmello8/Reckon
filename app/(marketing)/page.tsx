@@ -64,9 +64,16 @@ const softwareLd = {
     {
       "@type": "Offer",
       name: "Pro",
-      price: "19",
+      price: "8",
       priceCurrency: "USD",
-      description: "Per developer / month ($99/mo minimum). All providers, weekly digest, Linear.",
+      description: "Per tracked-developer seat / month, pick any number (min 3). All providers, workflows, weekly digest, Linear.",
+    },
+    {
+      "@type": "Offer",
+      name: "Pro Finance",
+      price: "499",
+      priceCurrency: "USD",
+      description: "Pro plus a flat monthly add-on: cost allocation, reconciliation, accruals, unit economics, and GL/ERP export.",
     },
   ],
 };

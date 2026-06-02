@@ -11,11 +11,13 @@ export function TopBar({
   unackCount = 0,
   surfaces = ["operations"],
   isAdmin = false,
+  financeEnabled = false,
 }: {
   user: AuthUser;
   unackCount?: number;
   surfaces?: Surface[];
   isAdmin?: boolean;
+  financeEnabled?: boolean;
 }) {
   return (
     <header
@@ -27,6 +29,7 @@ export function TopBar({
           unackCount={unackCount}
           surfaces={surfaces}
           isAdmin={isAdmin}
+          financeEnabled={financeEnabled}
         />
         <OrganizationSwitcher
           hidePersonal
