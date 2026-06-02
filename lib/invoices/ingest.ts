@@ -28,7 +28,7 @@ export type InvoiceInput = {
   subtotal: bigint;
   creditsApplied: bigint;
   expectedCredits: bigint | null; // NULL = unknown — never coerce to 0
-  expectedCreditsSource: "none" | "manual" | "commitment";
+  expectedCreditsSource: "none" | "manual" | "commitment" | "invoice_document";
   tax: bigint;
   total: bigint;
   dueDate?: string | null;

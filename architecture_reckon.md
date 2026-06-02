@@ -475,14 +475,14 @@ The per-day run-rate is the MTD daily mean, **optionally split weekday vs weeken
 
 The month-end accrual is Reckon's headline close feature: real-time usage is the best estimate of the not-yet-arrived invoice. `lib/close/accrual.ts` (pure `buildAccrualLines` + DB `generateAccrual`).
 
-**Tables (draft-first).** `journal_entries(period_id, type accrual|allocation|true_up, status draft|approved|posted, idempotency_key, memo, approved_by/at)`, `journal_entry_lines(gl_account, cost_center, entity?, project?, debit, credit)`, `accruals(period_id, provider?, estimated_amount, tail_forecast_amount, method_note, status, journal_entry_id)`. All org-scoped, RLS.
+**Tables (draft-first).** `journal_entries(period_id, type accrual|allocation|true_up|reversal, status draft|approved, idempotency_key, memo, approved_by/at)` — there is **no `posted` status on the JE**; delivery state lives downstream in `export_batches.status` / `posting_log.status` (§9, Phase 13 export-first), since one flag can't represent "exported a file we can't confirm was imported" vs "posted via API", `journal_entry_lines(gl_account, cost_center, entity?, project?, debit, credit)`, `accruals(period_id, provider?, estimated_amount, tail_forecast_amount, method_note, status, journal_entry_id)`. All org-scoped, RLS.
 
 **Computation.** For the (tz-correct, §5d) period: sum coded usage via `cost_allocations` split by **GL × cost center** (respecting `allocation_pct`), then add the **not-yet-reported forecast tail** (per provider: `projected − MTD`, §5c). The tail is split across the observed GL/CC lines **pro-rata** (largest-remainder, so debits sum exactly), carrying the same coding. The JE is **expense debits by CC/GL + one accrued-liability credit** (`organizations.accrued_liability_gl_account_id`). `estimated = observed + tail`. A `method_note` records exactly how the number was computed (audit evidence).
 
 **Invariants & gates.**
 - **Balanced:** `buildAccrualLines` returns `balanced` and `generateAccrual` **refuses to write** an unbalanced entry (debits == credits, always).
 - **Idempotent:** `idempotency_key = accrual:{periodId}:all` (unique per org) — regenerating **replaces** an existing draft in place; never duplicates.
-- **Draft-first, human approval:** the JE is created `draft` and **never auto-approved**. Approval is a person's action in the UI (`approveAccrualJE`, draft→approved only). Nothing posts externally (Phase 13); an `approved`/`posted` accrual **blocks regenerate** so a reviewed conclusion is never silently overwritten.
+- **Draft-first, human approval:** the JE is created `draft` and **never auto-approved**. Approval is a person's action in the UI (`approveAccrualJE`, draft→approved only). Nothing posts externally (Phase 13 delivers via file export); an `approved` accrual **blocks regenerate** so a reviewed conclusion is never silently overwritten.
 
 ---
 
@@ -500,7 +500,7 @@ The accrual close loop: an accrual estimates the invoice, then next period it is
 
 **Invariants & gates.**
 - **Balanced & draft-first:** both helpers return `balanced`; the DB functions **refuse to write unbalanced** entries and create everything `draft`. Reversal/true-up reuse the accrual's human-approval path (`approveAccrualJE` is the only draft→approved transition); nothing posts externally (Phase 13).
-- **Idempotent:** keyed per source JE — regenerating **replaces** a prior draft; an `approved`/`posted` reversal or true-up **blocks regenerate**.
+- **Idempotent:** keyed per source JE — regenerating **replaces** a prior draft; an `approved` reversal or true-up **blocks regenerate**.
 - **Traceable:** `source_journal_entry_id` ties each reversal/true-up to its accrual; the UI renders the chain accrual → reversal → true-up with each entry's status.
 
 Verified by `scripts/test-accrual-loop.ts` (pure): reversal nets to zero on every dimension; under/over/exact true-ups balance with correct sign and dimensions; `errorPct` math.

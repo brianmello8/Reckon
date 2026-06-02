@@ -118,6 +118,9 @@ export const expectedCreditsSourceEnum = pgEnum("expected_credits_source", [
   "none",
   "manual",
   "commitment",
+  // Credits read off an uploaded invoice document (vs typed manually) — keeps
+  // upload provenance first-class alongside the API path (playbook 10.1 amendment).
+  "invoice_document",
 ]);
 export const invoiceSourceEnum = pgEnum("invoice_source", [
   "manual",
@@ -151,10 +154,13 @@ export const journalEntryTypeEnum = pgEnum("journal_entry_type", [
   "true_up",
   "reversal",
 ]);
+// draft | approved only. Delivery state lives downstream — export_batches.status
+// (file path) / posting_log.status (API path) — never a "posted" flag on the JE,
+// which couldn't represent "exported a file we can't confirm was imported" vs
+// "posted via API" (Phase 13 export-first; playbook 11.2 amendment).
 export const journalEntryStatusEnum = pgEnum("journal_entry_status", [
   "draft",
   "approved",
-  "posted",
 ]);
 // Commitments & prepaid credits (Phase 10.4)
 export const commitmentTypeEnum = pgEnum("commitment_type", [
