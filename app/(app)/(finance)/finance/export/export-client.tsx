@@ -31,13 +31,15 @@ type Batch = {
   status: string;
   jeCount: number;
   needsMappingCount: number;
+  codeSetLabel: string | null;
   lockOverrideReason: string | null;
   supersedeReason: string | null;
   generatedAt: string;
   downloadedAt: string | null;
   acknowledgedAt: string | null;
 };
-type View = { periods: Period[]; batches: Batch[] };
+type CodeSet = { id: string; label: string };
+type View = { periods: Period[]; batches: Batch[]; codeSets: CodeSet[] };
 
 const FORMATS: { key: TargetFormat; label: string }[] = [
   { key: "generic_csv", label: "Generic CSV" },
@@ -74,15 +76,17 @@ export function ExportClient({ view }: { view: View }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState<string | null>(null);
   const [format, setFormat] = React.useState<Record<string, TargetFormat>>({});
+  const [codeSet, setCodeSet] = React.useState<Record<string, string>>({});
 
   async function generate(
     periodId: string,
     opts: { confirmSupersede?: boolean; lockOverrideReason?: string } = {}
   ) {
     const targetFormat = format[periodId] ?? "generic_csv";
+    const codeSetId = codeSet[periodId] || null;
     setBusy(periodId);
     try {
-      const res = await generateBatchAction({ periodId, targetFormat, ...opts });
+      const res = await generateBatchAction({ periodId, targetFormat, codeSetId, ...opts });
       if (res.status === "ok") {
         const file = await downloadBatchAction(res.batchId);
         triggerDownload(file);
@@ -164,6 +168,19 @@ export function ExportClient({ view }: { view: View }) {
                   <option key={f.key} value={f.key}>{f.label}</option>
                 ))}
               </select>
+              {view.codeSets.length > 0 && (
+                <select
+                  className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                  value={codeSet[p.id] ?? ""}
+                  onChange={(e) => setCodeSet((c) => ({ ...c, [p.id]: e.target.value }))}
+                  title="Apply a code set's real ERP codes (else Reckon codes, flagged)"
+                >
+                  <option value="">Reckon codes</option>
+                  {view.codeSets.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              )}
               <Button size="sm" disabled={busy === p.id || p.approvedCount === 0} onClick={() => generate(p.id)}>
                 Generate &amp; download
               </Button>
@@ -207,7 +224,10 @@ export function ExportClient({ view }: { view: View }) {
                         {b.lockOverrideReason && <div className="text-[11px] text-amber-600">lock override: {b.lockOverrideReason}</div>}
                         {b.supersedeReason && <div className="text-[11px] text-ink-3">superseded: {b.supersedeReason}</div>}
                       </td>
-                      <td className="px-3 py-1.5 text-ink-3">{b.targetFormat}</td>
+                      <td className="px-3 py-1.5 text-ink-3">
+                        {b.targetFormat}
+                        {b.codeSetLabel && <div className="text-[11px] text-ink-3">codes: {b.codeSetLabel}</div>}
+                      </td>
                       <td className="px-3 py-1.5 text-right font-mono text-ink-2">{b.jeCount}</td>
                       <td className="px-3 py-1.5 font-mono text-[11.5px] text-ink-3">{b.contentHash}…</td>
                       <td className="px-3 py-1.5"><Badge variant={statusVariant[b.status] ?? "secondary"}>{b.status}</Badge></td>

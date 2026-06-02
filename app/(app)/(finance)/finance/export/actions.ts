@@ -20,6 +20,7 @@ export async function getExportViewAction() {
 export async function generateBatchAction(input: {
   periodId: string;
   targetFormat: TargetFormat;
+  codeSetId?: string | null;
   confirmSupersede?: boolean;
   lockOverrideReason?: string;
 }): Promise<GenerateResult> {
@@ -28,6 +29,7 @@ export async function generateBatchAction(input: {
     periodId: input.periodId,
     targetFormat: input.targetFormat,
     journalEntryIds: [], // all approved JEs in the period
+    codeSetId: input.codeSetId ?? null,
     confirmSupersede: input.confirmSupersede,
     lockOverrideReason: input.lockOverrideReason,
     userId: user.userId,

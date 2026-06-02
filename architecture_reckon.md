@@ -583,6 +583,22 @@ Verified by `scripts/test-export-templates.ts` (21 checks): every format byte-de
 
 ---
 
+## 5k. Chart-of-accounts upload & dimension mapping (Phase 13.3, playbook §9b)
+
+So exports carry the customer's **real** codes, they upload their chart of accounts / dimension lists and map Reckon's dimension values onto them — **by upload only, never an API** (the API pull is the optional 13.4 connector). `lib/erp-codes/store.ts`, UI `(finance)/finance/erp-codes`. Mirrors the §5g CSV-ingestion pattern; no credential, no connection.
+
+**Tables (org-scoped, RLS).** `erp_code_sets(system_label, uploaded_by/at)` — one upload = one code set. `erp_codes(code_set_id, segment, code, name)` with `segment ∈ {gl_account, cost_center, entity, project, product_line}`, unique on `(code_set_id, segment, code)`. `dimension_mappings(code_set_id, reckon_dimension, reckon_value_id, erp_code, validated)` — one mapping per `(code set, dimension, value)`; `reckon_value_id` is polymorphic (gl_accounts / cost_centers / … `.id`, no FK); `validated` = the mapped code actually exists in that code set's uploaded codes. `export_batches.code_set_id` records which set a batch used (and is part of the `external_batch_id` identity, since the code set changes the emitted codes).
+
+**Upload.** Client-side CSV parse (auto-detects a code/account column + optional name column), one segment per file, stored as a code set. De-dupes `(segment, code)` within the upload.
+
+**Mapping + flagging.** The UI lists each Reckon dimension value for a selected code set with a dropdown of that segment's uploaded codes; selecting maps it (always `validated`), clearing unmaps. Values that appear on **approved JE lines but have no mapping** are surfaced as a headline flag — *you can't export a real code you haven't mapped*. Product line is mappable but flagged "not used in JE exports" (JE lines carry gl/cost-center/entity/project only).
+
+**Wiring into export (§5i/§5j).** `buildEntries(…, codeSetId)` loads the set's mappings: a line dimension with a mapping emits the **real ERP code** (and the real code's name); an unmapped value emits the **Reckon code** and sets the line's `needsMapping`. With no code set selected, every coded line is unmapped (Reckon codes, all flagged). `export_batches.needs_mapping_count` + the export-page flag ensure an internal label is never *silently* shipped — mapping is never *required* to export (unmapped just carries Reckon codes, flagged).
+
+Verified by `scripts/test-erp-mapping.ts`: CoA uploads into a code set; a Reckon GL maps to a real code (validated); a used-but-unmapped cost center is flagged; a netsuite export carries the mapped `60000` (not the Reckon code) while the unmapped cost center falls back to the Reckon code with `needs_mapping_count > 0`; a no-code-set export carries Reckon codes. Grep confirms zero credential/connection surface.
+
+---
+
 ## 6. Data flow: Ingestion
 
 ```mermaid

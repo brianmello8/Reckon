@@ -25,6 +25,7 @@ import {
   Target,
   Gauge,
   FileDown,
+  ListTree,
   UserCog,
 } from "lucide-react";
 import { Logo } from "@/components/reckon/primitives";
@@ -61,6 +62,7 @@ const SURFACE_NAV: Record<Surface, NavItem[]> = {
     { href: "/finance/accruals", label: "Accruals", icon: BookText },
     { href: "/finance/outcomes", label: "Outcomes", icon: Target },
     { href: "/finance/unit-economics", label: "Unit economics", icon: Gauge },
+    { href: "/finance/erp-codes", label: "ERP codes", icon: ListTree },
     { href: "/finance/export", label: "Export", icon: FileDown },
   ],
 };

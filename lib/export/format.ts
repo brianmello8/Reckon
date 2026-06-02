@@ -75,11 +75,17 @@ export function sha256Hex(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
 }
 
-/** Deterministic, stable batch id from org + period + the EXACT JE set. The
- * re-import idempotency anchor: same set → same id, regardless of when/how often. */
-export function externalBatchId(orgId: string, periodId: string, journalEntryIds: string[]): string {
+/** Deterministic, stable batch id from org + period + code set + the EXACT JE
+ * set. The re-import idempotency anchor: same inputs → same id, every time.
+ * (The code set is part of the identity since it changes the emitted codes.) */
+export function externalBatchId(
+  orgId: string,
+  periodId: string,
+  codeSetId: string | null,
+  journalEntryIds: string[]
+): string {
   const sorted = [...journalEntryIds].sort();
-  const h = sha256Hex(`${orgId}:${periodId}:${sorted.join(",")}`).slice(0, 12).toUpperCase();
+  const h = sha256Hex(`${orgId}:${periodId}:${codeSetId ?? "none"}:${sorted.join(",")}`).slice(0, 12).toUpperCase();
   return `RCKN-${periodId.slice(0, 8)}-${h}`;
 }
 

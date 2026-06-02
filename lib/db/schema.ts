@@ -221,6 +221,14 @@ export const exportBatchStatusEnum = pgEnum("export_batch_status", [
   "acknowledged",
   "superseded",
 ]);
+// The dimension segments a real ERP code can belong to (Phase 13.3, §5k).
+export const erpSegmentEnum = pgEnum("erp_segment", [
+  "gl_account",
+  "cost_center",
+  "entity",
+  "project",
+  "product_line",
+]);
 
 // --- Tables ---
 
@@ -1406,6 +1414,8 @@ export const exportBatches = pgTable(
     // Lines carrying a Reckon code with no real ERP-code mapping yet (Phase 13.3).
     // Surfaced in the UI so an internal label is never silently shipped as final.
     needsMappingCount: integer("needs_mapping_count").notNull().default(0),
+    // Which uploaded code set's real codes were applied (null = Reckon codes only).
+    codeSetId: uuid("code_set_id").references((): AnyPgColumn => erpCodeSets.id),
     status: exportBatchStatusEnum("status").notNull().default("generated"),
     // Set (with a reason) when generated against a LOCKED Reckon period.
     lockOverrideReason: text("lock_override_reason"),
@@ -1444,6 +1454,70 @@ export const exportBatchEntries = pgTable(
   (t) => [
     uniqueIndex("uniq_export_batch_entries").on(t.batchId, t.journalEntryId),
     index("idx_export_batch_entries_je").on(t.orgId, t.journalEntryId),
+  ]
+);
+
+// The customer's real chart-of-accounts / dimension codes, sourced by UPLOAD
+// (Phase 13.3, §5k) — never by API (that's the optional 13.4 connector). One
+// upload = one code set; export formatters prefer a mapped real code over Reckon's.
+export const erpCodeSets = pgTable(
+  "erp_code_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    systemLabel: text("system_label").notNull(), // e.g. "NetSuite production CoA"
+    uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_erp_code_sets_org").on(t.orgId)]
+);
+
+export const erpCodes = pgTable(
+  "erp_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    codeSetId: uuid("code_set_id")
+      .notNull()
+      .references(() => erpCodeSets.id),
+    segment: erpSegmentEnum("segment").notNull(),
+    code: text("code").notNull(),
+    name: text("name"),
+  },
+  (t) => [
+    index("idx_erp_codes_set_segment").on(t.codeSetId, t.segment),
+    uniqueIndex("uniq_erp_codes_set_segment_code").on(t.codeSetId, t.segment, t.code),
+  ]
+);
+
+// Maps a Reckon dimension value to a real ERP code within a code set (Phase 13.3).
+// `reckon_value_id` is polymorphic (gl_accounts / cost_centers / entities /
+// projects / product_lines .id) — no FK. One mapping per (code set, dimension,
+// value). `validated` = the erp_code exists in that code set's uploaded codes.
+export const dimensionMappings = pgTable(
+  "dimension_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    codeSetId: uuid("code_set_id")
+      .notNull()
+      .references(() => erpCodeSets.id),
+    reckonDimension: erpSegmentEnum("reckon_dimension").notNull(),
+    reckonValueId: uuid("reckon_value_id").notNull(),
+    erpCode: text("erp_code").notNull(),
+    validated: boolean("validated").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uniq_dimension_mappings").on(t.codeSetId, t.reckonDimension, t.reckonValueId),
+    index("idx_dimension_mappings_org").on(t.orgId, t.codeSetId),
   ]
 );
 

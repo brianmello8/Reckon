@@ -9,6 +9,9 @@ import {
   projects,
   exportBatches,
   exportBatchEntries,
+  erpCodeSets,
+  erpCodes,
+  dimensionMappings,
 } from "@/lib/db/schema";
 import { and, eq, inArray, desc } from "drizzle-orm";
 import { getReportingTimezone } from "@/lib/close/cutoff";
@@ -22,9 +25,16 @@ const BOUNDARY_RULE = "inclusive start, exclusive end";
 type Tx = typeof db;
 
 /** Approved JEs for a period, built into canonical ExportEntry[] with dimension
- * codes/names resolved. Dimensions carry Reckon codes (real-code mapping is 13.3),
- * flagged needsMapping. */
-async function buildEntries(tx: Tx, orgId: string, periodId: string, jeIds: string[]): Promise<ExportEntry[]> {
+ * codes/names resolved. When `codeSetId` is given, a dimension value with a
+ * mapping (§5k) emits the REAL ERP code; an unmapped value emits the Reckon code
+ * and is flagged needsMapping. With no code set, all coded lines are flagged. */
+async function buildEntries(
+  tx: Tx,
+  orgId: string,
+  periodId: string,
+  jeIds: string[],
+  codeSetId: string | null
+): Promise<ExportEntry[]> {
   if (jeIds.length === 0) return [];
   const jes = await tx
     .select({ id: journalEntries.id, type: journalEntries.type, memo: journalEntries.memo, status: journalEntries.status })
@@ -48,6 +58,35 @@ async function buildEntries(tx: Tx, orgId: string, periodId: string, jeIds: stri
   const entMap = new Map(ent.map((x) => [x.id, x.code]));
   const prjMap = new Map(prj.map((x) => [x.id, x.code]));
 
+  // Real-code mappings (§5k) for the chosen code set, + names of the real codes.
+  const maps = codeSetId
+    ? await tx
+        .select({ dim: dimensionMappings.reckonDimension, valueId: dimensionMappings.reckonValueId, erpCode: dimensionMappings.erpCode })
+        .from(dimensionMappings)
+        .where(and(eq(dimensionMappings.orgId, orgId), eq(dimensionMappings.codeSetId, codeSetId)))
+    : [];
+  const mapByKey = new Map(maps.map((m) => [`${m.dim}:${m.valueId}`, m.erpCode]));
+  const erpNames = codeSetId
+    ? await tx
+        .select({ segment: erpCodes.segment, code: erpCodes.code, name: erpCodes.name })
+        .from(erpCodes)
+        .where(and(eq(erpCodes.orgId, orgId), eq(erpCodes.codeSetId, codeSetId)))
+    : [];
+  const erpNameByKey = new Map(erpNames.map((c) => [`${c.segment}:${c.code}`, c.name]));
+
+  // Resolve one dimension value → emitted code/name, and whether it's unmapped.
+  const resolve = (
+    dim: "gl_account" | "cost_center" | "entity" | "project",
+    valueId: string | null,
+    reckonCode: string | null,
+    reckonName: string | null
+  ): { code: string | null; name: string | null; unmapped: boolean } => {
+    if (!valueId) return { code: null, name: null, unmapped: false };
+    const mapped = mapByKey.get(`${dim}:${valueId}`);
+    if (mapped) return { code: mapped, name: erpNameByKey.get(`${dim}:${mapped}`) ?? reckonName, unmapped: false };
+    return { code: reckonCode, name: reckonName, unmapped: true };
+  };
+
   const linesByJe = new Map<string, typeof lines>();
   for (const l of lines) (linesByJe.get(l.journalEntryId) ?? linesByJe.set(l.journalEntryId, []).get(l.journalEntryId)!).push(l);
 
@@ -55,19 +94,27 @@ async function buildEntries(tx: Tx, orgId: string, periodId: string, jeIds: stri
     journalEntryId: j.id,
     type: j.type,
     memo: j.memo,
-    lines: (linesByJe.get(j.id) ?? []).map((l) => ({
-      lineExternalId: lineExternalId(orgId, j.id, l.id),
-      glCode: l.glAccountId ? glMap.get(l.glAccountId)?.code ?? null : null,
-      glName: l.glAccountId ? glMap.get(l.glAccountId)?.name ?? null : null,
-      costCenterCode: l.costCenterId ? ccMap.get(l.costCenterId)?.code ?? null : null,
-      costCenterName: l.costCenterId ? ccMap.get(l.costCenterId)?.name ?? null : null,
-      entityCode: l.entityId ? entMap.get(l.entityId) ?? null : null,
-      projectCode: l.projectId ? prjMap.get(l.projectId) ?? null : null,
-      debitMicros: l.debit,
-      creditMicros: l.credit,
-      // 13.1 always carries Reckon codes (no ERP code-set yet) → flag any coded line.
-      needsMapping: !!(l.glAccountId || l.costCenterId || l.entityId || l.projectId),
-    })),
+    lines: (linesByJe.get(j.id) ?? []).map((l) => {
+      const glDef = l.glAccountId ? glMap.get(l.glAccountId) : undefined;
+      const ccDef = l.costCenterId ? ccMap.get(l.costCenterId) : undefined;
+      const glR = resolve("gl_account", l.glAccountId, glDef?.code ?? null, glDef?.name ?? null);
+      const ccR = resolve("cost_center", l.costCenterId, ccDef?.code ?? null, ccDef?.name ?? null);
+      const entR = resolve("entity", l.entityId, l.entityId ? entMap.get(l.entityId) ?? null : null, null);
+      const prjR = resolve("project", l.projectId, l.projectId ? prjMap.get(l.projectId) ?? null : null, null);
+      return {
+        lineExternalId: lineExternalId(orgId, j.id, l.id),
+        glCode: glR.code,
+        glName: glR.name,
+        costCenterCode: ccR.code,
+        costCenterName: ccR.name,
+        entityCode: entR.code,
+        projectCode: prjR.code,
+        debitMicros: l.debit,
+        creditMicros: l.credit,
+        // Flagged when a present dimension still carries a Reckon code (unmapped).
+        needsMapping: glR.unmapped || ccR.unmapped || entR.unmapped || prjR.unmapped,
+      };
+    }),
   }));
 }
 
@@ -75,6 +122,7 @@ export type GenerateInput = {
   periodId: string;
   targetFormat: TargetFormat;
   journalEntryIds: string[];
+  codeSetId?: string | null;
   confirmSupersede?: boolean;
   lockOverrideReason?: string;
   userId?: string;
@@ -147,9 +195,10 @@ export async function generateExportBatch(orgId: string, input: GenerateInput): 
   }
 
   // Build canonical entries + render the file (deterministic).
+  const codeSetId = input.codeSetId ?? null;
   const tz = await getReportingTimezone(orgId, period.entityId);
-  const ebid = externalBatchId(orgId, input.periodId, jeIds);
-  const entries = await buildEntries(db, orgId, input.periodId, jeIds);
+  const ebid = externalBatchId(orgId, input.periodId, codeSetId, jeIds);
+  const entries = await buildEntries(db, orgId, input.periodId, jeIds, codeSetId);
   const meta = {
     periodLabel,
     periodStart: period.periodStart,
@@ -183,6 +232,7 @@ export async function generateExportBatch(orgId: string, input: GenerateInput): 
         mimetype: file.mimetype,
         body: file.body,
         needsMappingCount,
+        codeSetId,
         status: "generated",
         lockOverrideReason: input.lockOverrideReason?.trim() || null,
         generatedByUserId: input.userId ?? null,
@@ -266,6 +316,13 @@ export async function getExportView(orgId: string) {
   const countByBatch = new Map<string, number>();
   for (const r of batchEntryCounts) countByBatch.set(r.batchId, (countByBatch.get(r.batchId) ?? 0) + 1);
 
+  const codeSets = await db
+    .select({ id: erpCodeSets.id, label: erpCodeSets.systemLabel })
+    .from(erpCodeSets)
+    .where(eq(erpCodeSets.orgId, orgId))
+    .orderBy(desc(erpCodeSets.uploadedAt));
+  const codeSetLabel = new Map(codeSets.map((c) => [c.id, c.label]));
+
   const jesByPeriod = new Map<string, { approved: number; exported: number; notExported: { id: string; type: string; memo: string | null }[] }>();
   for (const p of periods) jesByPeriod.set(p.id, { approved: 0, exported: 0, notExported: [] });
   for (const j of approvedJes) {
@@ -277,6 +334,7 @@ export async function getExportView(orgId: string) {
   }
 
   return {
+    codeSets,
     periods: periods.map((p) => {
       const s = jesByPeriod.get(p.id)!;
       return {
@@ -298,6 +356,7 @@ export async function getExportView(orgId: string) {
       status: b.status,
       jeCount: countByBatch.get(b.id) ?? 0,
       needsMappingCount: b.needsMappingCount,
+      codeSetLabel: b.codeSetId ? codeSetLabel.get(b.codeSetId) ?? "(deleted code set)" : null,
       lockOverrideReason: b.lockOverrideReason,
       supersedeReason: b.supersedeReason,
       generatedAt: b.generatedAt.toISOString(),
