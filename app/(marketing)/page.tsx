@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SignUpButton, Show } from "@clerk/nextjs";
 import { HeroMock } from "@/components/reckon/hero-mock";
 import { MarketingShowcase, SlackMark } from "@/components/reckon/marketing-showcase";
+import { FinanceShowcase } from "@/components/reckon/finance-showcase";
 import { Spike } from "@/components/reckon/primitives";
 import { JsonLd } from "@/components/reckon/json-ld";
 import {
@@ -208,6 +209,27 @@ export default function HomePage() {
               <p className="mt-2 text-[14px] leading-relaxed text-ink-2">{f.b}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Pro Finance — what the finance side of the house does */}
+      <section className="border-y border-line bg-paper">
+        <div className="mx-auto max-w-5xl px-6 py-20">
+          <span className="inline-flex items-center rounded-full border border-brand-line bg-brand-soft px-3 py-1 text-[12.5px] font-medium text-brand-ink">
+            Pro Finance
+          </span>
+          <h2 className="mt-5 max-w-2xl text-[clamp(26px,4vw,34px)] font-semibold tracking-[-0.025em] text-ink">
+            Turn AI spend into close-ready financials.
+          </h2>
+          <p className="mt-3 max-w-2xl text-[15px] text-ink-2">
+            The finance suite codes every dollar to your GL and cost centers, reconciles it
+            to the provider invoice, generates the month-end accrual as a balanced journal
+            entry, computes margin and cost-per-outcome, and exports a GL-ready file — so AI
+            spend lands in your books, not a spreadsheet.
+          </p>
+          <div className="mt-10">
+            <FinanceShowcase />
+          </div>
         </div>
       </section>
 
