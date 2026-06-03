@@ -227,6 +227,9 @@ export default function HomePage() {
             entry, computes margin and cost-per-outcome, and exports a GL-ready file — so AI
             spend lands in your books, not a spreadsheet.
           </p>
+          <Link href="/pro-finance" className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium text-brand-ink hover:opacity-80">
+            See what Pro Finance does →
+          </Link>
           <div className="mt-10">
             <FinanceShowcase />
           </div>

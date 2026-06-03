@@ -49,6 +49,9 @@ export default function MarketingLayout({
             <Link href="/demo" className="hidden text-ink-2 hover:text-ink sm:block">
               Demo
             </Link>
+            <Link href="/pro-finance" className="hidden text-ink-2 hover:text-ink sm:block">
+              Finance
+            </Link>
             <Link href="/pricing" className="hidden text-ink-2 hover:text-ink sm:block">
               Pricing
             </Link>
