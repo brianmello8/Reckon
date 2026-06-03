@@ -4,7 +4,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata({
   title: "Pricing",
   description:
-    "Free for up to 3 developers. Pro is $8 per tracked-developer seat / month — pick any number of seats. Pro Finance adds the finance suite for a flat fee. No per-event fees, no overages. Cancel anytime.",
+    "Start with a 7-day free trial. Entry is $5/mo for small teams; Pro is $8 per tracked-developer seat / month — pick any number of seats; Pro Finance adds the finance suite for a flat fee. No per-event fees, no overages. Cancel anytime.",
   path: "/pricing",
 });
 
@@ -29,10 +29,13 @@ export default function PricingPage() {
               How is the price calculated?
             </h3>
             <p className="mt-1 text-ink-2">
-              Pro is $8 per seat per month (a seat = one tracked developer), or
-              $80/seat/year. You choose the number of seats at checkout (minimum
-              3) and change it anytime. Pro Finance adds the full finance suite
-              for a flat $499/mo ($4,990/yr), org-wide — not per seat.
+              Every account starts with a <b>7-day free trial</b> (no card). Entry
+              is a flat <b>$5/mo</b> for small teams (up to 3 developers, 1
+              provider). Pro is <b>$8 per seat per month</b> (a seat = one tracked
+              developer), or $80/seat/year — pick any number of seats (min 3) and
+              change it anytime. Pro Finance adds the full finance suite for a flat
+              $499/mo ($4,990/yr), org-wide — not per seat. Only the Entry trial is
+              free; Pro and Pro Finance are paid directly.
             </p>
           </div>
           <div>

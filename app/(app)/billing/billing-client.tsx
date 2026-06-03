@@ -20,6 +20,7 @@ type BillingData = {
   minSeats: number;
   subscription: {
     status: string;
+    tier: "entry" | "pro";
     currentPeriodEnd: string;
     interval: string;
     seats: number;
@@ -31,11 +32,15 @@ type BillingData = {
 
 // Display prices — MUST match the Stripe Prices configured in env.
 const PRICE = {
+  entryMonthly: 5, // $/mo flat
+  entryAnnual: 50, // $/yr flat
   proSeatMonthly: 8, // $/seat/mo
   proSeatAnnual: 80, // $/seat/yr
   financeMonthly: 499, // $/mo flat
   financeAnnual: 4990, // $/yr flat
 };
+
+const ENTRY_FEATURES = ["Up to 3 developers", "1 provider", "Daily digest + anomaly alerts", "30-day history"];
 
 const PRO_FEATURES = [
   "All providers (Anthropic, OpenAI, Copilot, OpenRouter)",
@@ -53,8 +58,6 @@ const FINANCE_FEATURES = [
   "Unit economics & margin alerts",
   "GL-ready export + ERP code mapping",
 ];
-const FREE_FEATURES = ["Up to 3 developers", "1 provider", "Daily digest only", "30-day retention"];
-
 const money = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
 export function BillingClient({ data }: { data: BillingData }) {
@@ -68,10 +71,10 @@ export function BillingClient({ data }: { data: BillingData }) {
     if (searchParams.get("canceled")) toast("Checkout canceled.");
   }, [searchParams]);
 
-  async function subscribe(withFinance: boolean) {
+  async function subscribe(tier: "entry" | "pro" | "pro_finance") {
     setPending(true);
     try {
-      await createCheckoutSession({ interval, seats: Math.max(data.minSeats, seats), finance: withFinance });
+      await createCheckoutSession({ tier, interval, seats: Math.max(data.minSeats, seats) });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start checkout");
       setPending(false);
@@ -92,34 +95,47 @@ export function BillingClient({ data }: { data: BillingData }) {
   const per = interval === "year" ? "/yr" : "/mo";
 
   // ── Active subscriber view ─────────────────────────────────────────────────
-  if (data.plan === "pro" && data.subscription) {
+  if ((data.plan === "pro" || data.plan === "entry") && data.subscription) {
     const sub = data.subscription;
-    const overSeats = data.developerCount > sub.seats;
+    const isPro = sub.tier === "pro";
+    const title = !isPro ? "Reckon Entry" : data.financeEnabled ? "Reckon Pro Finance" : "Reckon Pro";
+    const overSeats = isPro && data.developerCount > sub.seats;
     return (
       <div className="max-w-lg space-y-4">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>{data.financeEnabled ? "Reckon Pro Finance" : "Reckon Pro"}</CardTitle>
+              <CardTitle>{title}</CardTitle>
               <Badge>{sub.status}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <Field label="Seats (purchased)" value={String(sub.seats)} />
-              <Field label="Seats used" value={`${data.developerCount} of ${sub.seats}`} />
-              <Field label="Finance add-on" value={data.financeEnabled ? "On" : "Off"} />
+              {isPro ? (
+                <>
+                  <Field label="Seats (purchased)" value={String(sub.seats)} />
+                  <Field label="Seats used" value={`${data.developerCount} of ${sub.seats}`} />
+                  <Field label="Finance add-on" value={data.financeEnabled ? "On" : "Off"} />
+                  <Field label="Per seat" value={money(sub.seatUnitAmount)} />
+                </>
+              ) : (
+                <Field label="Developers" value={`${data.developerCount} of 3`} />
+              )}
               <Field label="Billing" value={`${money(sub.totalAmount)}${sub.interval === "year" ? "/yr" : "/mo"}`} />
               <Field label="Renews" value={new Date(sub.currentPeriodEnd).toLocaleDateString()} />
-              <Field label="Per seat" value={`${money(sub.seatUnitAmount)}`} />
             </div>
             {overSeats && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[12.5px] text-amber-700">
                 You&apos;re tracking {data.developerCount} developers but purchased {sub.seats} seats. Add seats in the billing portal.
               </p>
             )}
+            {!isPro && (
+              <Button onClick={() => subscribe("pro")} disabled={pending} className="w-full">
+                Upgrade to Pro
+              </Button>
+            )}
             <Button onClick={manage} disabled={pending} variant="outline" className="w-full">
-              {pending ? "Opening…" : "Manage billing & seats"}
+              {pending ? "Opening…" : "Manage billing"}
             </Button>
           </CardContent>
         </Card>
@@ -144,20 +160,26 @@ export function BillingClient({ data }: { data: BillingData }) {
         ))}
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-3">
-        {/* Free */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Entry */}
         <Card>
           <CardHeader>
-            <CardTitle>Free</CardTitle>
-            <p className="text-2xl font-semibold">$0</p>
+            <CardTitle>Entry</CardTitle>
+            <p className="text-2xl font-semibold">
+              ${interval === "year" ? PRICE.entryAnnual : PRICE.entryMonthly}
+              <span className="text-sm font-normal text-ink-3">{per}</span>
+            </p>
+            <p className="text-xs text-ink-3">flat · small teams</p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <ul className="space-y-2">
-              {FREE_FEATURES.map((f) => (
-                <li key={f} className="flex items-center gap-2 text-sm text-ink-3"><Check className="h-4 w-4 text-ink-3" />{f}</li>
+              {ENTRY_FEATURES.map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm text-ink-2"><Check className="h-4 w-4 text-ink-3" />{f}</li>
               ))}
             </ul>
-            {data.plan === "free" && <Badge variant="secondary" className="mt-4">Current plan</Badge>}
+            <Button onClick={() => subscribe("entry")} disabled={pending} variant="outline" className="w-full">
+              {pending ? "Loading…" : "Subscribe to Entry"}
+            </Button>
           </CardContent>
         </Card>
 
@@ -188,7 +210,7 @@ export function BillingClient({ data }: { data: BillingData }) {
               <span className="text-ink-3">min {data.minSeats}</span>
             </label>
             <p className="text-[12.5px] text-ink-3">{money(seatTotal * 100)}{per} · you can change seats anytime</p>
-            <Button onClick={() => subscribe(false)} disabled={pending} className="w-full">
+            <Button onClick={() => subscribe("pro")} disabled={pending} className="w-full">
               {pending ? "Loading…" : "Subscribe to Pro"}
             </Button>
           </CardContent>
@@ -211,7 +233,7 @@ export function BillingClient({ data }: { data: BillingData }) {
               ))}
             </ul>
             <p className="text-[12.5px] text-ink-3">{money((seatTotal + finFlat) * 100)}{per} ({seats} seats + finance)</p>
-            <Button onClick={() => subscribe(true)} disabled={pending} className="w-full">
+            <Button onClick={() => subscribe("pro_finance")} disabled={pending} className="w-full">
               {pending ? "Loading…" : "Subscribe to Pro Finance"}
             </Button>
           </CardContent>

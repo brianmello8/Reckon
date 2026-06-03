@@ -3,22 +3,31 @@ import { stripe } from "@/lib/stripe/client";
 import { db } from "@/lib/db/client";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { proPriceIds, financePriceIds } from "@/lib/stripe/config";
+import { entryPriceIds, proPriceIds, financePriceIds } from "@/lib/stripe/config";
 import type Stripe from "stripe";
 
-/** Derive seatCount + financeEnabled from a subscription's line items. */
-function readEntitlements(sub: Stripe.Subscription): { seatCount: number | null; financeEnabled: boolean } {
+type Plan = "free" | "entry" | "pro";
+
+/** Derive plan + seatCount + financeEnabled from a subscription's line items. */
+function readEntitlements(sub: Stripe.Subscription): { plan: Plan; seatCount: number | null; financeEnabled: boolean } {
+  const entryIds = entryPriceIds();
   const seatIds = proPriceIds();
   const finIds = financePriceIds();
+  let plan: Plan = "free";
   let seatCount: number | null = null;
   let financeEnabled = false;
   for (const item of sub.items.data) {
     const priceId = item.price?.id;
     if (!priceId) continue;
-    if (seatIds.includes(priceId)) seatCount = item.quantity ?? null;
+    if (seatIds.includes(priceId)) {
+      plan = "pro"; // Pro per-seat line wins over entry
+      seatCount = item.quantity ?? null;
+    } else if (entryIds.includes(priceId) && plan !== "pro") {
+      plan = "entry";
+    }
     if (finIds.includes(priceId)) financeEnabled = true;
   }
-  return { seatCount, financeEnabled };
+  return { plan, seatCount, financeEnabled };
 }
 
 export async function POST(req: NextRequest) {
@@ -51,8 +60,8 @@ export async function POST(req: NextRequest) {
           ? session.subscription
           : session.subscription?.id;
 
-      // Pull entitlements (seats + finance add-on) from the new subscription.
-      let ent: { seatCount: number | null; financeEnabled: boolean } = { seatCount: null, financeEnabled: false };
+      // Pull plan + entitlements from the new subscription.
+      let ent: { plan: Plan; seatCount: number | null; financeEnabled: boolean } = { plan: "pro", seatCount: null, financeEnabled: false };
       if (subscriptionId) {
         try {
           ent = readEntitlements(await stripe.subscriptions.retrieve(subscriptionId));
@@ -64,7 +73,7 @@ export async function POST(req: NextRequest) {
       await db
         .update(organizations)
         .set({
-          plan: "pro",
+          plan: ent.plan === "free" ? "pro" : ent.plan,
           stripeCustomerId:
             typeof session.customer === "string"
               ? session.customer
@@ -101,7 +110,8 @@ export async function POST(req: NextRequest) {
         .update(organizations)
         .set({
           stripeSubscriptionId: subscription.id,
-          plan: active ? "pro" : "free",
+          // entry/pro while active; "free" sentinel (lapsed) otherwise.
+          plan: active ? (ent.plan === "free" ? "entry" : ent.plan) : "free",
           // Entitlements only apply while active; clear them otherwise.
           seatCount: active ? ent.seatCount : null,
           financeEnabled: active ? ent.financeEnabled : false,

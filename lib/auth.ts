@@ -17,9 +17,15 @@ export type AuthUser = {
   surfaces: Surface[];
   orgName: string;
   orgSlug: string;
-  plan: "free" | "pro";
+  plan: "free" | "pro" | "entry";
   financeEnabled: boolean;
+  trialEndsAt: string | null;
 };
+
+/** A paid subscription (entry or pro) — distinct from the trial/lapsed sentinel. */
+function isPaid(user: AuthUser): boolean {
+  return user.plan === "entry" || user.plan === "pro";
+}
 
 /**
  * Returns the current authenticated user and their org, or null if not signed in.
@@ -46,6 +52,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
       orgSlug: organizations.slug,
       plan: organizations.plan,
       financeEnabled: organizations.financeEnabled,
+      trialEndsAt: organizations.trialEndsAt,
     })
     .from(users)
     .innerJoin(organizations, eq(users.orgId, organizations.id))
@@ -72,8 +79,28 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     orgSlug: row.orgSlug,
     plan: row.plan,
     financeEnabled: row.financeEnabled,
+    trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
   };
 });
+
+/** In an active (not-yet-expired) trial with no paid subscription. The trial is
+ * of the ENTRY tier only (Pro/Pro Finance have no trial). */
+export function isTrialing(user: AuthUser): boolean {
+  return !isPaid(user) && !!user.trialEndsAt && new Date(user.trialEndsAt) > new Date();
+}
+
+/** Whole-numbered days left in the trial (0 if expired/none). */
+export function trialDaysLeft(user: AuthUser): number {
+  if (!user.trialEndsAt) return 0;
+  const ms = new Date(user.trialEndsAt).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
+/** Has access to the app: a paid plan (entry/pro) OR an active Entry trial. A
+ * lapsed org (trial ended, never subscribed) has no access — no free tier. */
+export function hasAppAccess(user: AuthUser): boolean {
+  return isPaid(user) || isTrialing(user);
+}
 
 /** Whether the user can access a given surface (admins always can). */
 export function hasSurface(user: AuthUser, surface: Surface): boolean {
@@ -86,6 +113,9 @@ export function hasSurface(user: AuthUser, surface: Surface): boolean {
  * plan sees the upsell, not the data.
  */
 export function hasFinanceAccess(user: AuthUser): boolean {
+  // Pro Finance is a PAID add-on with NO trial — the 7-day trial covers the
+  // lowest tier (Pro) only. So finance requires the purchased add-on, even
+  // during the trial.
   return hasSurface(user, "finance") && user.financeEnabled;
 }
 

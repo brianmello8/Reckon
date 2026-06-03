@@ -5,7 +5,7 @@ import { withOrgContext } from "@/lib/db/rls";
 import { organizations, developers, providerKeys } from "@/lib/db/schema";
 import { eq, and, isNull, count, countDistinct } from "drizzle-orm";
 import { stripe } from "@/lib/stripe/client";
-import { proPrice, financePrice, proPriceIds, financePriceIds, MIN_SEATS } from "@/lib/stripe/config";
+import { entryPrice, proPrice, financePrice, entryPriceIds, proPriceIds, financePriceIds, MIN_SEATS } from "@/lib/stripe/config";
 import { redirect } from "next/navigation";
 
 export async function getBillingData() {
@@ -41,21 +41,26 @@ export async function getBillingData() {
         current_period_end: number;
         items: { data: Array<{ quantity?: number; price?: { id: string; recurring?: { interval?: string }; unit_amount?: number } }> };
       };
+      const entryIds = entryPriceIds();
       const seatIds = proPriceIds();
       const finIds = financePriceIds();
+      const entryItem = sub.items.data.find((i) => i.price && entryIds.includes(i.price.id));
       const seatItem = sub.items.data.find((i) => i.price && seatIds.includes(i.price.id));
       const finItem = sub.items.data.find((i) => i.price && finIds.includes(i.price.id));
       const seatUnit = seatItem?.price?.unit_amount ?? 0;
       const seats = seatItem?.quantity ?? 0;
       const finAmount = finItem ? finItem.price?.unit_amount ?? 0 : 0;
+      const entryAmount = entryItem ? entryItem.price?.unit_amount ?? 0 : 0;
+      const tier: "entry" | "pro" = seatItem ? "pro" : "entry";
       subscription = {
         status: sub.status,
+        tier,
         currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
-        interval: seatItem?.price?.recurring?.interval ?? "month",
+        interval: (seatItem ?? entryItem)?.price?.recurring?.interval ?? "month",
         seats,
         seatUnitAmount: seatUnit,
         financeAmount: finAmount,
-        totalAmount: seatUnit * seats + finAmount,
+        totalAmount: tier === "pro" ? seatUnit * seats + finAmount : entryAmount,
       };
     } catch {
       // Subscription may have been deleted.
@@ -75,9 +80,9 @@ export async function getBillingData() {
 }
 
 export async function createCheckoutSession(input: {
+  tier: "entry" | "pro" | "pro_finance";
   interval: "month" | "year";
-  seats: number;
-  finance: boolean;
+  seats?: number;
 }) {
   const user = await requireAdmin();
 
@@ -85,10 +90,6 @@ export async function createCheckoutSession(input: {
     tx.select().from(organizations).where(eq(organizations.id, user.orgId)).limit(1)
   );
   if (!org) throw new Error("Org not found");
-
-  const seatPrice = proPrice(input.interval);
-  if (!seatPrice) throw new Error("Pro price not configured. Set STRIPE_PRICE_PRO_* env vars.");
-  const seats = Math.max(MIN_SEATS, Math.floor(input.seats || 0));
 
   // Create or reuse the Stripe customer.
   let customerId = org.stripeCustomerId;
@@ -100,13 +101,24 @@ export async function createCheckoutSession(input: {
     });
   }
 
-  const lineItems: { price: string; quantity: number; adjustable_quantity?: { enabled: boolean; minimum: number } }[] = [
-    { price: seatPrice, quantity: seats, adjustable_quantity: { enabled: true, minimum: MIN_SEATS } },
-  ];
-  if (input.finance) {
-    const finId = financePrice(input.interval);
-    if (!finId) throw new Error("Finance price not configured. Set STRIPE_PRICE_FINANCE_* env vars.");
-    lineItems.push({ price: finId, quantity: 1 });
+  type Line = { price: string; quantity: number; adjustable_quantity?: { enabled: boolean; minimum: number } };
+  const lineItems: Line[] = [];
+  if (input.tier === "entry") {
+    // Flat $5/mo entry tier — single line item, fixed quantity.
+    const p = entryPrice(input.interval);
+    if (!p) throw new Error("Entry price not configured. Set STRIPE_PRICE_ENTRY_* env vars.");
+    lineItems.push({ price: p, quantity: 1 });
+  } else {
+    // Pro (and Pro Finance) — per-seat, buyer picks the count.
+    const seatPrice = proPrice(input.interval);
+    if (!seatPrice) throw new Error("Pro price not configured. Set STRIPE_PRICE_PRO_* env vars.");
+    const seats = Math.max(MIN_SEATS, Math.floor(input.seats || 0));
+    lineItems.push({ price: seatPrice, quantity: seats, adjustable_quantity: { enabled: true, minimum: MIN_SEATS } });
+    if (input.tier === "pro_finance") {
+      const finId = financePrice(input.interval);
+      if (!finId) throw new Error("Finance price not configured. Set STRIPE_PRICE_FINANCE_* env vars.");
+      lineItems.push({ price: finId, quantity: 1 });
+    }
   }
 
   const session = await stripe.checkout.sessions.create({

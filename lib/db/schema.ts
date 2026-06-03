@@ -26,7 +26,9 @@ const bytea = customType<{ data: Buffer }>({
 
 // --- Enums ---
 
-export const planEnum = pgEnum("plan", ["free", "pro"]);
+// "free" = no active subscription (trialing or lapsed, disambiguated by
+// trial_ends_at). "entry" = paid $5/mo entry tier. "pro" = paid per-seat Pro.
+export const planEnum = pgEnum("plan", ["free", "pro", "entry"]);
 export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
 // App-level surfaces a member can access (Phase 8.5). Stored on the membership
 // (users) row — NOT dependent on Clerk paid custom roles.
@@ -239,7 +241,12 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // "free" = no active paid subscription (i.e. trialing or lapsed — disambiguated
+  // by trial_ends_at). "pro" = an active/trialing Stripe subscription. There is
+  // no perpetual free tier: a new org gets a 7-day trial, then must subscribe.
   plan: planEnum("plan").notNull().default("free"),
+  // End of the 7-day trial (set at org creation). Access = plan='pro' OR now < this.
+  trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
   // Purchased Pro seats (the Stripe per-seat line quantity). Set by the billing
   // webhook; null on free. Billing capacity only — tracked-developer count may
   // exceed it (we never drop spend data), which the billing page flags.

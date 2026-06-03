@@ -37,7 +37,7 @@ export function IntegrationsClient({
 }: {
   slack: SlackInstall;
   linear: LinearInstall;
-  plan: "free" | "pro";
+  plan: "free" | "pro" | "entry";
 }) {
   const linearLocked = plan !== "pro";
   const searchParams = useSearchParams();

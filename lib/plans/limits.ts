@@ -1,11 +1,15 @@
+// Entry caps (also used while trialing, where plan is still "free").
+const ENTRY_LIMITS = {
+  maxDevelopers: 3,
+  maxProviders: 1,
+  retentionDays: 30,
+  weeklyDigest: false,
+  linearIntegration: false,
+} as const;
+
 export const PLAN_LIMITS = {
-  free: {
-    maxDevelopers: 3,
-    maxProviders: 1,
-    retentionDays: 30,
-    weeklyDigest: false,
-    linearIntegration: false,
-  },
+  free: ENTRY_LIMITS, // sentinel for trialing/lapsed orgs
+  entry: ENTRY_LIMITS, // paid $5/mo entry tier
   pro: {
     maxDevelopers: Infinity,
     maxProviders: Infinity,

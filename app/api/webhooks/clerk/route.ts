@@ -42,12 +42,15 @@ export async function POST(req: Request) {
   switch (evt.type) {
     case "organization.created": {
       const { id, name, slug } = evt.data;
+      // Every new org starts a 7-day trial (no perpetual free tier).
+      const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await db
         .insert(organizations)
         .values({
           clerkOrgId: id,
           name,
           slug: slug ?? id,
+          trialEndsAt,
         })
         .onConflictDoNothing();
       break;

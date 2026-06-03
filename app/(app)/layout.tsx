@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, hasAppAccess, isTrialing, trialDaysLeft } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { PaymentBanner } from "@/components/payment-banner";
+import { TrialBanner } from "@/components/trial-banner";
+import { Paywall } from "./paywall";
+import { getBillingData } from "./billing/actions";
 import { db } from "@/lib/db/client";
 import { organizations, anomalies } from "@/lib/db/schema";
 import { eq, and, isNull, count } from "drizzle-orm";
@@ -37,12 +40,21 @@ export default async function AppLayout({
     .limit(1);
 
   const isPastDue = org?.paymentStatus === "past_due";
+  const isAdmin = user.role === "admin";
+
+  // No free tier: a lapsed org (trial ended, never subscribed) hits a paywall.
+  if (!hasAppAccess(user)) {
+    const billing = isAdmin ? await getBillingData().catch(() => null) : null;
+    return <Paywall isAdmin={isAdmin} billing={billing} />;
+  }
+  const trialing = isTrialing(user);
 
   // Surfaces this member can see in nav (admins get all three).
-  const isAdmin = user.role === "admin";
   const surfaces = isAdmin
     ? (["operations", "workflows", "finance"] as const).slice()
     : user.surfaces;
+  // Pro Finance is paid-only (no trial). During the trial the finance nav shows
+  // its PRO upsell pill rather than unlocking.
   const financeEnabled = user.financeEnabled;
 
   // Unacknowledged anomaly count for the nav badge.
@@ -72,6 +84,7 @@ export default async function AppLayout({
 
       <div className="flex flex-1 flex-col overflow-hidden">
         {isPastDue && <PaymentBanner />}
+        {trialing && <TrialBanner daysLeft={trialDaysLeft(user)} />}
         <TopBar
           user={user}
           unackCount={Number(unackCount)}

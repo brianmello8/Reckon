@@ -43,7 +43,7 @@ export async function addDeveloper(formData: FormData) {
 
   if (Number(devCount?.count ?? 0) >= limits.maxDevelopers) {
     throw new PlanLimitError(
-      `Free plan supports up to ${limits.maxDevelopers} developers. Upgrade to Pro for unlimited.`,
+      `Your plan supports up to ${limits.maxDevelopers} developers. Upgrade to Pro for unlimited.`,
       "maxDevelopers"
     );
   }

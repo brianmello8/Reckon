@@ -56,10 +56,10 @@ const softwareLd = {
   offers: [
     {
       "@type": "Offer",
-      name: "Free",
-      price: "0",
+      name: "Entry",
+      price: "5",
       priceCurrency: "USD",
-      description: "Up to 3 developers, one provider, daily digest.",
+      description: "Up to 3 developers, one provider, daily digest. 7-day free trial.",
     },
     {
       "@type": "Offer",
@@ -109,7 +109,7 @@ export default function HomePage() {
           <Show when="signed-out">
             <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
               <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
-                Start free
+                Start free trial
               </button>
             </SignUpButton>
           </Show>
@@ -126,7 +126,7 @@ export default function HomePage() {
           </Link>
         </div>
         <p className="mt-4 text-[13px] text-ink-3">
-          Free for up to 3 developers · no credit card · 5-minute setup
+          7-day free trial · no credit card · 5-minute setup
         </p>
       </section>
 
@@ -259,7 +259,7 @@ export default function HomePage() {
             <Show when="signed-out">
               <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
                 <button className="h-11 rounded-lg bg-brand px-6 text-[15px] font-medium text-white hover:opacity-90">
-                  Start free
+                  Start free trial
                 </button>
               </SignUpButton>
             </Show>

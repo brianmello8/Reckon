@@ -5,7 +5,7 @@ import Link from "next/link";
 import { SignUpButton, Show } from "@clerk/nextjs";
 import { Check } from "lucide-react";
 
-const FREE_FEATURES = [
+const ENTRY_FEATURES = [
   "Up to 3 developers",
   "1 provider (Anthropic or OpenAI)",
   "Daily Slack digest",
@@ -34,6 +34,8 @@ const FINANCE_FEATURES = [
 export function PricingClient() {
   const [annual, setAnnual] = useState(false);
 
+  const entry = annual ? 50 : 5; // $/yr or /mo flat
+  const entryUnit = annual ? "/yr" : "/mo";
   const perSeat = annual ? 80 : 8; // $/seat/yr or /mo
   const seatUnit = annual ? "/seat/yr" : "/seat/mo";
   const finance = annual ? 4990 : 499; // flat add-on
@@ -63,20 +65,25 @@ export function PricingClient() {
 
       {/* Plan cards */}
       <div className="mt-10 grid gap-6 lg:grid-cols-3">
-        {/* Free */}
+        {/* Entry */}
         <div className="rounded-xl border border-line bg-paper p-8 shadow-sm">
-          <h3 className="text-lg font-medium text-ink">Free</h3>
-          <p className="mt-4 text-4xl font-semibold text-ink">$0</p>
-          <p className="mt-1 text-sm text-ink-3">For small teams getting started</p>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-medium text-ink">Entry</h3>
+            <span className="rounded-full bg-pos/10 px-2 py-0.5 text-[11px] font-medium text-pos">7-day free trial</span>
+          </div>
+          <p className="mt-4 text-4xl font-semibold text-ink">
+            ${entry}<span className="text-base font-normal text-ink-3">{entryUnit}</span>
+          </p>
+          <p className="mt-1 text-sm text-ink-3">Flat · for small teams getting started</p>
           <ul className="mt-6 space-y-3">
-            {FREE_FEATURES.map((f) => (
+            {ENTRY_FEATURES.map((f) => (
               <li key={f} className="flex items-center gap-2 text-sm text-ink-2"><Check className="h-4 w-4 text-ink-4" />{f}</li>
             ))}
           </ul>
           <div className="mt-8">
             <Show when="signed-out">
               <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
-                <button className="w-full rounded-lg border border-line-2 px-4 py-2 text-sm font-medium text-ink hover:bg-bg-2">Start free</button>
+                <button className="w-full rounded-lg border border-line-2 px-4 py-2 text-sm font-medium text-ink hover:bg-bg-2">Start free trial</button>
               </SignUpButton>
             </Show>
             <Show when="signed-in">
@@ -100,7 +107,7 @@ export function PricingClient() {
           <div className="mt-8">
             <Show when="signed-out">
               <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
-                <button className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">Start free, upgrade anytime</button>
+                <button className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90">Start free trial</button>
               </SignUpButton>
             </Show>
             <Show when="signed-in">
@@ -124,7 +131,7 @@ export function PricingClient() {
           <div className="mt-8">
             <Show when="signed-out">
               <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
-                <button className="w-full rounded-lg border border-line-2 px-4 py-2 text-sm font-medium text-ink hover:bg-bg-2">Start free</button>
+                <button className="w-full rounded-lg border border-line-2 px-4 py-2 text-sm font-medium text-ink hover:bg-bg-2">Start free trial</button>
               </SignUpButton>
             </Show>
             <Show when="signed-in">

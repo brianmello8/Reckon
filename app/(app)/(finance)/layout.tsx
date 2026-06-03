@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser, hasSurface } from "@/lib/auth";
+import { getCurrentUser, hasSurface, hasFinanceAccess } from "@/lib/auth";
 import { Landmark } from "lucide-react";
 import { FinanceShell } from "./finance-shell";
 
@@ -13,7 +13,7 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   const user = await getCurrentUser();
   if (!user || !hasSurface(user, "finance")) notFound();
 
-  if (!user.financeEnabled) {
+  if (!hasFinanceAccess(user)) {
     return (
       <div className="mx-auto mt-12 max-w-lg rounded-2xl border border-line bg-paper p-8 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bg-2">
