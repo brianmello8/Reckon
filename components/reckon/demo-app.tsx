@@ -313,7 +313,7 @@ function DemoProviders() {
 function DemoObservability() {
   return (
     <div>
-      <PageHead title="Observability" sub="Connect Langfuse or Helicone to attribute spend to workflows and runs — metadata only, never prompt content." />
+      <PageHead title="Observability" sub="Connect Langfuse to attribute spend to workflows and runs — metadata only, never prompt content." />
       <div className="grid gap-4 sm:grid-cols-3"><Stat label="Traces ingested (30d)" value="48,210" sub="from Langfuse" /><Stat label="Attributed spend" value="78%" sub="of total, to a workflow" /><Stat label="Last sync" value="12m ago" sub="hourly" /></div>
       <div className="mt-4"><Panel title="Connections">
         <div className="flex items-center justify-between rounded-lg border border-line p-3">

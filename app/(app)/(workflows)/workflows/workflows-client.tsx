@@ -104,7 +104,7 @@ export function WorkflowsClient({
       {tab === "workflows" && (
         <Table
           head={["Workflow", "Agent", "Total", "Runs", "Mean / run", "p95 / run"]}
-          empty="No workflows yet. Connect observability (Langfuse/Helicone) or map agent keys to see workflow spend."
+          empty="No workflows yet. Connect observability (Langfuse) or map agent keys to see workflow spend."
           rows={workflows.map((w) => [
             <Link
               key="n"

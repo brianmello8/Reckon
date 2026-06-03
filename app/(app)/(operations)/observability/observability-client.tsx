@@ -29,7 +29,7 @@ import {
   removeObservabilityConnection,
 } from "./actions";
 
-type Provider = "langfuse" | "helicone";
+type Provider = "langfuse";
 type ConnectionRow = {
   id: string;
   provider: Provider;
@@ -50,12 +50,6 @@ const PROVIDER_META: Record<
     blurb:
       "Create a pair of API keys (Project Settings → API Keys). We read traces and generation metadata only.",
   },
-  helicone: {
-    name: "Helicone",
-    docUrl: "https://docs.helicone.ai/rest/request/post-v1requestquery",
-    blurb:
-      "Create an API key (Settings → API Keys). We read request metadata only, grouped into runs by session id.",
-  },
 };
 
 const statusVariant = {
@@ -71,7 +65,7 @@ export function ObservabilityClient({
 }) {
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="max-w-md">
         {(Object.keys(PROVIDER_META) as Provider[]).map((p) => (
           <ConnectCard key={p} provider={p} />
         ))}
@@ -122,42 +116,14 @@ function ConnectCard({ provider }: { provider: Provider }) {
             </DialogHeader>
             <form action={handleAdd} className="space-y-4">
               <input type="hidden" name="provider" value={provider} />
-              {provider === "langfuse" ? (
-                <>
-                  <Field
-                    name="publicKey"
-                    label="Public key"
-                    placeholder="pk-lf-..."
-                  />
-                  <Field
-                    name="secretKey"
-                    label="Secret key"
-                    placeholder="sk-lf-..."
-                    secret
-                  />
-                  <Field
-                    name="baseUrl"
-                    label="Base URL (self-hosted only)"
-                    placeholder="https://cloud.langfuse.com"
-                    optional
-                  />
-                </>
-              ) : (
-                <>
-                  <Field
-                    name="apiKey"
-                    label="API key"
-                    placeholder="sk-helicone-..."
-                    secret
-                  />
-                  <Field
-                    name="baseUrl"
-                    label="Base URL (override only)"
-                    placeholder="https://api.helicone.ai"
-                    optional
-                  />
-                </>
-              )}
+              <Field name="publicKey" label="Public key" placeholder="pk-lf-..." />
+              <Field name="secretKey" label="Secret key" placeholder="sk-lf-..." secret />
+              <Field
+                name="baseUrl"
+                label="Base URL (self-hosted only)"
+                placeholder="https://cloud.langfuse.com"
+                optional
+              />
               <p className="text-xs text-zinc-500">
                 Validated, then encrypted (KMS). We never read prompts or
                 responses — metadata only.
@@ -222,8 +188,8 @@ function ConnectionList({ connections }: { connections: ConnectionRow[] }) {
   if (connections.length === 0) {
     return (
       <p className="text-sm text-zinc-500">
-        No observability connections yet. Connect Langfuse or Helicone above to
-        attribute spend to workflows and runs.
+        No observability connections yet. Connect Langfuse above to attribute
+        spend to workflows and runs.
       </p>
     );
   }

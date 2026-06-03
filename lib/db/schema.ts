@@ -80,7 +80,6 @@ export const attributionConfidenceEnum = pgEnum("attribution_confidence", [
 ]);
 export const observabilityProviderEnum = pgEnum("observability_provider", [
   "langfuse",
-  "helicone",
 ]);
 export const observabilityConnectionStatusEnum = pgEnum(
   "observability_connection_status",

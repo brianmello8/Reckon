@@ -18,20 +18,20 @@ export interface ObservabilityGeneration {
 export interface ObservabilityRun {
   // The customer's own run/trace id. Stable per run; used as workflow_runs.external_run_id.
   external_run_id: string;
-  // A label for the run's workflow (Langfuse trace name / Helicone session id).
+  // A label for the run's workflow (the Langfuse trace name).
   // POTENTIALLY customer-controlled free text — treated as a label only.
   workflow_name: string;
   started_at: string | null; // ISO 8601 (UTC)
   ended_at: string | null; // ISO 8601 (UTC)
   status: "running" | "completed" | "failed" | "unknown";
-  // The customer's end-customer this run served (Langfuse userId / Helicone
-  // user property), for per-customer COGS later. Customer-controlled id.
+  // The customer's end-customer this run served (the Langfuse userId), for
+  // per-customer COGS later. Customer-controlled id.
   customer_ref?: string | null;
   generations: ObservabilityGeneration[];
 }
 
 export interface ObservabilityCredentials {
-  // Langfuse: { publicKey, secretKey }. Helicone: { apiKey }.
+  // Langfuse: { publicKey, secretKey }.
   publicKey?: string;
   secretKey?: string;
   apiKey?: string;

@@ -37,43 +37,34 @@ export async function getObservabilityConnections() {
 }
 
 const addSchema = z.object({
-  provider: z.enum(["langfuse", "helicone"]),
+  provider: z.enum(["langfuse"]),
   baseUrl: z.string().url().optional().or(z.literal("")),
   publicKey: z.string().optional(),
   secretKey: z.string().optional(),
-  apiKey: z.string().optional(),
 });
 
-function buildCredentials(
-  provider: "langfuse" | "helicone",
-  input: z.infer<typeof addSchema>
-): ObservabilityCredentials {
-  if (provider === "langfuse") {
-    if (!input.publicKey || !input.secretKey) {
-      throw new Error("Langfuse needs both a public key and a secret key.");
-    }
-    return { publicKey: input.publicKey.trim(), secretKey: input.secretKey.trim() };
+function buildCredentials(input: z.infer<typeof addSchema>): ObservabilityCredentials {
+  if (!input.publicKey || !input.secretKey) {
+    throw new Error("Langfuse needs both a public key and a secret key.");
   }
-  if (!input.apiKey) throw new Error("Helicone needs an API key.");
-  return { apiKey: input.apiKey.trim() };
+  return { publicKey: input.publicKey.trim(), secretKey: input.secretKey.trim() };
 }
 
 /** Add a connection: validate credentials live, encrypt, store, poll once. */
 export async function addObservabilityConnection(formData: FormData) {
   const user = await requireAdmin();
   const parsed = addSchema.parse({
-    provider: formData.get("provider"),
+    provider: formData.get("provider") ?? "langfuse",
     baseUrl: formData.get("baseUrl") ?? "",
     publicKey: formData.get("publicKey") ?? "",
     secretKey: formData.get("secretKey") ?? "",
-    apiKey: formData.get("apiKey") ?? "",
   });
 
   const baseUrl =
     parsed.baseUrl && parsed.baseUrl !== ""
       ? parsed.baseUrl
       : DEFAULT_BASE_URL[parsed.provider];
-  const credentials = buildCredentials(parsed.provider, parsed);
+  const credentials = buildCredentials(parsed);
 
   // Validate before storing (auth errors surface to the admin immediately).
   const connector = getObservabilityConnector(parsed.provider);

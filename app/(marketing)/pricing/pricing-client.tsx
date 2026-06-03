@@ -16,7 +16,7 @@ const ENTRY_FEATURES = [
 const PRO_FEATURES = [
   "All providers (Anthropic, OpenAI, Copilot, OpenRouter)",
   "Workflows & per-agent ROI",
-  "Observability connectors (Langfuse / Helicone)",
+  "Observability connectors (Langfuse)",
   "Daily + weekly digests, anomaly alerts",
   "Linear integration",
   "365-day data retention",

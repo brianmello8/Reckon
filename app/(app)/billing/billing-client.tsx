@@ -45,7 +45,7 @@ const ENTRY_FEATURES = ["Up to 3 developers", "1 provider", "Daily digest + anom
 const PRO_FEATURES = [
   "All providers (Anthropic, OpenAI, Copilot, OpenRouter)",
   "Workflows & per-agent ROI",
-  "Observability connectors (Langfuse/Helicone)",
+  "Observability connectors (Langfuse)",
   "Daily + weekly digests, anomaly alerts",
   "Linear integration",
   "365-day retention",

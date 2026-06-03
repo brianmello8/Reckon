@@ -11,7 +11,7 @@ export default async function ObservabilityPage() {
     <div>
       <PageHead
         title="Observability"
-        sub="Connect Langfuse or Helicone to attribute spend to workflows and runs. We read metadata only — run ids, timing, model, and token counts — never prompts or responses."
+        sub="Connect Langfuse to attribute spend to workflows and runs. We read metadata only — run ids, timing, model, and token counts — never prompts or responses."
       />
       <ObservabilityClient
         connections={connections.map((c) => ({
