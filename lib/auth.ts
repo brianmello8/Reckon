@@ -2,7 +2,7 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db/client";
 import { users, organizations } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 export type Surface = "operations" | "workflows" | "finance";
 
@@ -66,6 +66,20 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
 
   if (!row) return null;
 
+  // Safety net: if the Clerk `organization.created` webhook never stamped a
+  // trial (missed/not configured) and the org isn't on a paid plan, start the
+  // 7-day trial now. The `IS NULL` guard makes it idempotent + race-safe, so
+  // a lapsed org (past trial_ends_at) is never re-granted.
+  let trialEndsAt = row.trialEndsAt;
+  if (!trialEndsAt && row.plan !== "pro" && row.plan !== "entry") {
+    const newEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await db
+      .update(organizations)
+      .set({ trialEndsAt: newEnd, updatedAt: new Date() })
+      .where(and(eq(organizations.id, row.orgId), isNull(organizations.trialEndsAt)));
+    trialEndsAt = newEnd;
+  }
+
   return {
     userId: row.userId,
     orgId: row.orgId,
@@ -79,7 +93,7 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
     orgSlug: row.orgSlug,
     plan: row.plan,
     financeEnabled: row.financeEnabled,
-    trialEndsAt: row.trialEndsAt ? row.trialEndsAt.toISOString() : null,
+    trialEndsAt: trialEndsAt ? trialEndsAt.toISOString() : null,
   };
 });
 
