@@ -38,8 +38,8 @@ export async function getBillingData() {
     try {
       const sub = (await stripe.subscriptions.retrieve(org.stripeSubscriptionId)) as unknown as {
         status: string;
-        current_period_end: number;
-        items: { data: Array<{ quantity?: number; price?: { id: string; recurring?: { interval?: string }; unit_amount?: number } }> };
+        current_period_end?: number;
+        items: { data: Array<{ quantity?: number; current_period_end?: number; price?: { id: string; recurring?: { interval?: string }; unit_amount?: number } }> };
       };
       const entryIds = entryPriceIds();
       const seatIds = proPriceIds();
@@ -52,10 +52,17 @@ export async function getBillingData() {
       const finAmount = finItem ? finItem.price?.unit_amount ?? 0 : 0;
       const entryAmount = entryItem ? entryItem.price?.unit_amount ?? 0 : 0;
       const tier: "entry" | "pro" = seatItem ? "pro" : "entry";
+      // Stripe moved current_period_end onto the subscription item in newer API
+      // versions — read it from either location, and guard against a bad value.
+      const periodEndTs = sub.current_period_end ?? sub.items.data[0]?.current_period_end;
+      const currentPeriodEnd =
+        periodEndTs && Number.isFinite(periodEndTs)
+          ? new Date(periodEndTs * 1000).toISOString()
+          : null;
       subscription = {
         status: sub.status,
         tier,
-        currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
+        currentPeriodEnd,
         interval: (seatItem ?? entryItem)?.price?.recurring?.interval ?? "month",
         seats,
         seatUnitAmount: seatUnit,

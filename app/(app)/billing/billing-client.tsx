@@ -21,7 +21,7 @@ type BillingData = {
   subscription: {
     status: string;
     tier: "entry" | "pro";
-    currentPeriodEnd: string;
+    currentPeriodEnd: string | null;
     interval: string;
     seats: number;
     seatUnitAmount: number; // cents
@@ -122,7 +122,7 @@ export function BillingClient({ data }: { data: BillingData }) {
                 <Field label="Developers" value={`${data.developerCount} of 3`} />
               )}
               <Field label="Billing" value={`${money(sub.totalAmount)}${sub.interval === "year" ? "/yr" : "/mo"}`} />
-              <Field label="Renews" value={new Date(sub.currentPeriodEnd).toLocaleDateString()} />
+              <Field label="Renews" value={sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—"} />
             </div>
             {overSeats && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[12.5px] text-amber-700">

@@ -73,10 +73,16 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   let trialEndsAt = row.trialEndsAt;
   if (!trialEndsAt && row.plan !== "pro" && row.plan !== "entry") {
     const newEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await db
-      .update(organizations)
-      .set({ trialEndsAt: newEnd, updatedAt: new Date() })
-      .where(and(eq(organizations.id, row.orgId), isNull(organizations.trialEndsAt)));
+    // Best-effort persist; grant the trial in-memory regardless so a transient
+    // write failure can never lock the user out or crash the render.
+    try {
+      await db
+        .update(organizations)
+        .set({ trialEndsAt: newEnd, updatedAt: new Date() })
+        .where(and(eq(organizations.id, row.orgId), isNull(organizations.trialEndsAt)));
+    } catch {
+      // ignore — the value is still returned below
+    }
     trialEndsAt = newEnd;
   }
 
