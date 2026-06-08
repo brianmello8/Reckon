@@ -49,6 +49,13 @@ type Coverage = {
   unattributedMicros: string;
   coveragePct: number;
 };
+type DevCoverageRow = {
+  providerId: string;
+  providerName: string;
+  totalMicros: string;
+  unattributedMicros: string;
+  unattributedPct: number;
+};
 type IdentityRow = {
   id: string;
   providerId: string;
@@ -66,12 +73,14 @@ export function ProvidersClient({
   identities,
   agents,
   coverage,
+  devCoverage,
 }: {
   providers: ProviderRow[];
   developers: DevRow[];
   identities: IdentityRow[];
   agents: AgentRow[];
   coverage: Coverage;
+  devCoverage: DevCoverageRow[];
 }) {
   return (
     <div className="space-y-8">
@@ -86,6 +95,7 @@ export function ProvidersClient({
         developers={developers}
         agents={agents}
         coverage={coverage}
+        devCoverage={devCoverage}
       />
     </div>
   );
@@ -233,11 +243,13 @@ function IdentityMapping({
   developers,
   agents,
   coverage,
+  devCoverage,
 }: {
   identities: IdentityRow[];
   developers: DevRow[];
   agents: AgentRow[];
   coverage: Coverage;
+  devCoverage: DevCoverageRow[];
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = React.useState<string | null>(null);
@@ -334,6 +346,7 @@ function IdentityMapping({
         </Button>
       </div>
       <CoverageBanner coverage={coverage} />
+      <DeveloperCoverageBanner devCoverage={devCoverage} />
       <div className="mt-4 overflow-hidden rounded-xl border border-line bg-paper">
         <table className="w-full text-sm">
           <thead className="border-b border-line bg-bg-2 text-left text-[12px] text-ink-3">
@@ -424,6 +437,37 @@ function CoverageBanner({ coverage }: { coverage: Coverage }) {
           observability for shared keys)
         </span>
       )}
+    </div>
+  );
+}
+
+// Per-provider share of spend not attributed to any developer. A high
+// percentage usually means a shared key: the provider reports one identity for
+// the whole team, so that spend can't be split per person. We surface it rather
+// than imply full per-developer coverage. Only providers with material
+// unattributed spend (≥1%) are shown to avoid noise.
+function DeveloperCoverageBanner({
+  devCoverage,
+}: {
+  devCoverage: DevCoverageRow[];
+}) {
+  const flagged = devCoverage.filter((r) => r.unattributedPct >= 1);
+  if (flagged.length === 0) return null;
+
+  return (
+    <div className="mt-2 space-y-1 text-[13px]">
+      {flagged.map((r) => (
+        <div key={r.providerId} className="text-ink-3">
+          <span className="font-medium text-ink-2">{r.providerName}</span> —{" "}
+          <span className="font-medium text-ink-2">
+            {r.unattributedPct.toFixed(0)}%
+          </span>{" "}
+          of 30d spend (
+          {fmtMoney(microsToDollars(Number(r.unattributedMicros)))}) isn&apos;t
+          attributed to a developer. Map its identities above; a single shared
+          key can&apos;t be split per person.
+        </div>
+      ))}
     </div>
   );
 }

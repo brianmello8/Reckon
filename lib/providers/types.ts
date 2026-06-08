@@ -39,6 +39,15 @@ export interface NormalizedInvoice {
   raw?: Record<string, unknown>;
 }
 
+// Maps a provider-side identity (external_id) to a human-readable label —
+// e.g. an Anthropic api_key_id to its key name, or an OpenAI user_id to that
+// member's email. Used to auto-name/auto-map developers when the usage API
+// itself only reports opaque IDs.
+export interface ProviderIdentityInfo {
+  external_id: string;
+  label: string;
+}
+
 export interface ProviderClient {
   fetchUsage(args: {
     apiKey: string;
@@ -56,4 +65,14 @@ export interface ProviderClient {
     since: Date;
     until: Date;
   }): Promise<NormalizedInvoice[]>;
+
+  /**
+   * Optional: enumerate the provider's identity directory (api keys, org users)
+   * to resolve the opaque IDs returned by fetchUsage into human labels.
+   * Implemented for providers whose usage API reports only opaque identities
+   * (Anthropic api_key_id, OpenAI user_id); absent where fetchUsage already
+   * carries a label (e.g. GitHub Copilot seat login). Best-effort: callers must
+   * treat failure as non-fatal and proceed without labels.
+   */
+  fetchIdentities?(args: { apiKey: string }): Promise<ProviderIdentityInfo[]>;
 }

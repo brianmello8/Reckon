@@ -85,6 +85,27 @@ export const ingestProviderKey = inngest.createFunction(
       });
     });
 
+    // Step 3b: Resolve opaque provider identities → human labels (best-effort).
+    // Providers whose usage API reports only opaque IDs (Anthropic api_key_id,
+    // OpenAI user_id) expose a directory endpoint; we fetch it once per run so
+    // identities auto-map to named developers instead of landing unassigned.
+    // Non-fatal: any failure here leaves the map empty and ingest proceeds.
+    const labelMap = await step.run("fetch-identities", async () => {
+      const client = getProviderClient(providerSlug);
+      if (!client.fetchIdentities) return {} as Record<string, string>;
+      try {
+        const identities = await client.fetchIdentities({ apiKey: plaintext });
+        return Object.fromEntries(
+          identities.map((i) => [i.external_id, i.label])
+        ) as Record<string, string>;
+      } catch (err) {
+        console.warn(
+          `[${providerSlug}] fetchIdentities failed (non-fatal): ${err instanceof Error ? err.message : "unknown"}`
+        );
+        return {} as Record<string, string>;
+      }
+    });
+
     // Step 4: Fetch usage in chunks
     const sinceDate = since ? parseISO(since) : subHours(new Date(), 48);
     const untilDate = new Date();
@@ -129,7 +150,7 @@ export const ingestProviderKey = inngest.createFunction(
       }
 
       const upserted = await step.run(`upsert-chunk-${i}`, async () => {
-        return upsertRows(rows, keyRow, providerSlug);
+        return upsertRows(rows, keyRow, providerSlug, labelMap);
       });
 
       totalUpserted += upserted;
@@ -154,9 +175,20 @@ export const ingestProviderKey = inngest.createFunction(
 async function upsertRows(
   rows: UsageRow[],
   keyRow: { id: string; orgId: string; providerId: string; developerId: string | null },
-  providerSlug: string
+  providerSlug: string,
+  labelMap: Record<string, string> = {}
 ): Promise<number> {
   if (rows.length === 0) return 0;
+
+  // Enrich opaque identities with their directory label (key name / user email)
+  // so resolveDeveloperForIdentity can auto-name a developer. Only fills a
+  // missing label — never overrides one the usage row already carried.
+  for (const row of rows) {
+    if (!row.identity_label && row.external_identity) {
+      const label = labelMap[row.external_identity];
+      if (label) row.identity_label = label;
+    }
+  }
 
   // Account-determination inputs (Phase 9.2). Loaded once; if the org has no
   // rules and no suspense account, inline allocation is skipped entirely

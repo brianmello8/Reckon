@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { ProviderClient, UsageRow } from "./types";
+import type { ProviderClient, ProviderIdentityInfo, UsageRow } from "./types";
 import { fetchWithRetry } from "./fetch-with-retry";
 import { computeOpenAICostMicros } from "./pricing/openai";
 import { keyFingerprint } from "@/lib/encryption/envelope";
@@ -94,6 +94,76 @@ export const openaiClient: ProviderClient = {
 
     // Merge rows with same (date, model)
     return mergeRows(allRows);
+  },
+
+  /**
+   * Resolve the opaque identities that usage groups by:
+   *  - user_id    → org member email/name (GET /v1/organization/users)
+   *  - api_key_id → admin key name        (GET /v1/organization/admin_api_keys)
+   * Each source is collected independently so a failure on one (e.g. a key
+   * lacking a scope) doesn't discard labels already gathered from the other.
+   */
+  async fetchIdentities({ apiKey }) {
+    const identities: ProviderIdentityInfo[] = [];
+
+    const collect = async (
+      path: string,
+      toInfo: (item: Record<string, unknown>) => ProviderIdentityInfo | null
+    ) => {
+      let after: string | undefined;
+      do {
+        const url = new URL(`https://api.openai.com/v1/organization/${path}`);
+        url.searchParams.set("limit", "100");
+        if (after) url.searchParams.set("after", after);
+
+        const response = await fetchWithRetry({
+          url: url.toString(),
+          provider: PROVIDER,
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        const data = (await response.json()) as {
+          data?: Array<Record<string, unknown>>;
+          has_more?: boolean;
+          last_id?: string | null;
+        };
+
+        for (const item of data.data ?? []) {
+          const info = toInfo(item);
+          if (info) identities.push(info);
+        }
+
+        after =
+          data.has_more && typeof data.last_id === "string"
+            ? data.last_id
+            : undefined;
+      } while (after);
+    };
+
+    try {
+      await collect("users", (u) => {
+        const id = typeof u.id === "string" ? u.id : null;
+        const label =
+          (typeof u.email === "string" && u.email) ||
+          (typeof u.name === "string" && u.name) ||
+          null;
+        return id && label ? { external_id: id, label } : null;
+      });
+    } catch {
+      // best-effort; admin_api_keys may still succeed
+    }
+
+    try {
+      await collect("admin_api_keys", (k) => {
+        const id = typeof k.id === "string" ? k.id : null;
+        const label = typeof k.name === "string" ? k.name : null;
+        return id && label ? { external_id: id, label } : null;
+      });
+    } catch {
+      // best-effort
+    }
+
+    return identities;
   },
 };
 

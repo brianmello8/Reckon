@@ -427,6 +427,54 @@ export async function getAttributionCoverage() {
   return getAgentAttributionCoverage(user.orgId, since);
 }
 
+/**
+ * Per-provider developer-attribution coverage for the last 30 days.
+ *
+ * Reports how much of each provider's spend is NOT attributed to any developer
+ * (usage_events.developer_id IS NULL). This is the honest signal for the
+ * shared-key limitation: when a team shares one API key, the provider reports a
+ * single opaque identity that maps to no individual, so that spend can't be
+ * split per developer. Surfaced advisory-only — we never invent a split.
+ */
+export async function getDeveloperAttributionCoverage() {
+  const user = await requireUser();
+  const since = format(subDays(new Date(), 30), "yyyy-MM-dd");
+
+  return withOrgContext(user.orgId, async (tx) => {
+    const rows = await tx
+      .select({
+        providerId: usageEvents.providerId,
+        providerName: providers.displayName,
+        totalMicros: sql<bigint>`sum(${usageEvents.costUsdMicros})`.as("total"),
+        unattributedMicros:
+          sql<bigint>`sum(case when ${usageEvents.developerId} is null then ${usageEvents.costUsdMicros} else 0 end)`.as(
+            "unattributed"
+          ),
+      })
+      .from(usageEvents)
+      .innerJoin(providers, eq(usageEvents.providerId, providers.id))
+      .where(
+        and(eq(usageEvents.orgId, user.orgId), gte(usageEvents.timeBucket, since))
+      )
+      .groupBy(usageEvents.providerId, providers.displayName);
+
+    return rows
+      .map((r) => {
+        const total = Number(r.totalMicros ?? 0);
+        const unattributed = Number(r.unattributedMicros ?? 0);
+        return {
+          providerId: r.providerId,
+          providerName: r.providerName,
+          totalMicros: String(r.totalMicros ?? 0),
+          unattributedMicros: String(r.unattributedMicros ?? 0),
+          unattributedPct: total > 0 ? (unattributed / total) * 100 : 0,
+        };
+      })
+      .filter((r) => Number(r.totalMicros) > 0)
+      .sort((a, b) => b.unattributedPct - a.unattributedPct);
+  });
+}
+
 /** Manual "recompute attribution" action for the whole org. */
 export async function recomputeAttributionAction() {
   const user = await requireAdmin();

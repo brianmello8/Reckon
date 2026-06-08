@@ -1,4 +1,4 @@
-import type { ProviderClient, UsageRow } from "./types";
+import type { ProviderClient, ProviderIdentityInfo, UsageRow } from "./types";
 import { fetchWithRetry } from "./fetch-with-retry";
 import { computeAnthropicCostMicros } from "./pricing/anthropic";
 import { keyFingerprint } from "@/lib/encryption/envelope";
@@ -92,5 +92,43 @@ export const anthropicClient: ProviderClient = {
     } while (page);
 
     return rows;
+  },
+
+  /**
+   * Resolve api_key_id → key name via the Admin API.
+   * Endpoint: GET /v1/organizations/api_keys (cursor-paginated via after_id).
+   */
+  async fetchIdentities({ apiKey }) {
+    const identities: ProviderIdentityInfo[] = [];
+    let afterId: string | undefined;
+
+    do {
+      const url = new URL("https://api.anthropic.com/v1/organizations/api_keys");
+      url.searchParams.set("limit", "100");
+      if (afterId) url.searchParams.set("after_id", afterId);
+
+      const response = await fetchWithRetry({
+        url: url.toString(),
+        provider: PROVIDER,
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+      });
+
+      const data = (await response.json()) as {
+        data?: Array<{ id?: string; name?: string }>;
+        has_more?: boolean;
+        last_id?: string | null;
+      };
+
+      for (const k of data.data ?? []) {
+        if (k.id && k.name) identities.push({ external_id: k.id, label: k.name });
+      }
+
+      afterId = data.has_more && data.last_id ? data.last_id : undefined;
+    } while (afterId);
+
+    return identities;
   },
 };

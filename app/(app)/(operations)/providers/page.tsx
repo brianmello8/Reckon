@@ -10,18 +10,19 @@ import {
   getProviderIdentities,
   getAgents,
   getAttributionCoverage,
+  getDeveloperAttributionCoverage,
 } from "./actions";
 
 const PROVIDER_DOCS: Record<string, { docUrl: string; description: string }> = {
   anthropic: {
     docUrl: "https://console.anthropic.com/settings/admin-keys",
     description:
-      "Create an Admin API key (Console → Settings → Admin keys). Reports usage for the whole org, broken down per API key.",
+      "Create an Admin API key (Console → Settings → Admin keys). Reports usage for the whole org, broken down per API key. Per-developer attribution requires each developer to use their own key — a shared key shows as one identity.",
   },
   openai: {
     docUrl: "https://platform.openai.com/settings/organization/admin-keys",
     description:
-      "Create an Admin key (Settings → Organization → Admin keys). Reports org usage broken down per user.",
+      "Create an Admin key (Settings → Organization → Admin keys). Reports org usage broken down per user. Per-developer attribution requires each developer to use their own key — a shared key shows as one identity.",
   },
   github_copilot: {
     docUrl: "https://docs.github.com/en/rest/copilot/copilot-user-management",
@@ -43,7 +44,8 @@ export default async function ProvidersPage() {
     .from(providers)
     .orderBy(providers.displayName);
 
-  const [keys, devs, identities, agentsList, coverage] = await Promise.all([
+  const [keys, devs, identities, agentsList, coverage, devCoverage] =
+    await Promise.all([
     withOrgContext(user.orgId, async (tx) =>
       tx
         .select({
@@ -68,10 +70,11 @@ export default async function ProvidersPage() {
         .where(eq(developers.orgId, user.orgId))
         .orderBy(developers.displayName)
     ),
-    getProviderIdentities(),
-    getAgents(),
-    getAttributionCoverage(),
-  ]);
+      getProviderIdentities(),
+      getAgents(),
+      getAttributionCoverage(),
+      getDeveloperAttributionCoverage(),
+    ]);
 
   const keyByProvider = new Map(keys.map((k) => [k.providerId, k]));
 
@@ -105,6 +108,7 @@ export default async function ProvidersPage() {
         identities={identities}
         agents={agentsList}
         coverage={coverage}
+        devCoverage={devCoverage}
       />
     </div>
   );
